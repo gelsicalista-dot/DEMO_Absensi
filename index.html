@@ -2535,7 +2535,7 @@
         class="fixed inset-0 bg-slate-950/70 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 transition-all">
         <div class="card-saas p-6 w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto animate-sheet border border-slate-200/80 shadow-2xl">
             <h3 class="font-bold text-gray-800 mb-4">Form Pengajuan Cuti / Izin</h3>
-            <form onsubmit="handleIzinSubmit(event)" class="space-y-3">
+            <form onsubmit="handleIzinSubmit(event)" novalidate class="space-y-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Pengajuan</label>
                     <select id="izin-jenis" onchange="toggleIzinFormFields()" class="w-full p-2.5 border rounded-xl text-xs font-semibold bg-white">
@@ -2581,23 +2581,20 @@
                 <div class="grid grid-cols-2 gap-3" id="wrapper-izin-dates">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal Mulai</label>
-                        <input type="date" id="izin-tgl-mulai" required class="w-full p-2.5 border rounded-xl text-xs">
+                        <input type="date" id="izin-tgl-mulai" class="w-full p-2.5 border rounded-xl text-xs" onchange="if(document.getElementById('izin-jenis').value==='Izin Jam'){document.getElementById('izin-tgl-selesai').value=this.value;}">
                     </div>
                     <div id="wrapper-tgl-selesai">
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal Selesai</label>
-                        <input type="date" id="izin-tgl-selesai" required
-                            class="w-full p-2.5 border rounded-xl text-xs">
+                        <input type="date" id="izin-tgl-selesai" class="w-full p-2.5 border rounded-xl text-xs">
                     </div>
                 </div>
                 <div id="wrapper-jumlah-hari">
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah Hari</label>
-                    <input type="number" id="izin-jumlah" min="1" value="1" required
-                        class="w-full p-2.5 border rounded-xl text-xs">
+                    <input type="number" id="izin-jumlah" min="1" value="1" class="w-full p-2.5 border rounded-xl text-xs">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Alasan</label>
-                    <textarea id="izin-alasan" rows="2" required
-                        class="w-full p-2.5 border rounded-xl text-xs" placeholder="Keterangan keperluan..."></textarea>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Alasan *</label>
+                    <textarea id="izin-alasan" rows="2" class="w-full p-2.5 border rounded-xl text-xs" placeholder="Keterangan keperluan..."></textarea>
                 </div>
                 <div class="flex gap-2 justify-end mt-4">
                     <button type="button" onclick="closeModalIzin()"
@@ -5492,12 +5489,19 @@
             const wrapKhusus = document.getElementById('wrapper-cuti-khusus');
             const wrapTglSelesai = document.getElementById('wrapper-tgl-selesai');
             const wrapJumlah = document.getElementById('wrapper-jumlah-hari');
+            const inputTglMulai = document.getElementById('izin-tgl-mulai');
+            const inputTglSelesai = document.getElementById('izin-tgl-selesai');
+            const inputJumlah = document.getElementById('izin-jumlah');
 
             if (wrapJam) {
                 if (jenis === 'Izin Jam') {
                     wrapJam.classList.remove('hidden');
                     if (wrapTglSelesai) wrapTglSelesai.classList.add('hidden');
                     if (wrapJumlah) wrapJumlah.classList.add('hidden');
+                    if (inputTglSelesai && inputTglMulai) {
+                        inputTglSelesai.value = inputTglMulai.value;
+                    }
+                    if (inputJumlah) inputJumlah.value = '1';
                 } else {
                     wrapJam.classList.add('hidden');
                     if (wrapTglSelesai) wrapTglSelesai.classList.remove('hidden');
@@ -5513,6 +5517,12 @@
 
         function openModalIzin() {
             document.getElementById('modal-izin').classList.remove('hidden');
+            const tglMulai = document.getElementById('izin-tgl-mulai');
+            if (tglMulai && !tglMulai.value) {
+                const now = new Date();
+                const todayIso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+                tglMulai.value = todayIso;
+            }
             toggleIzinFormFields();
         }
 
@@ -5526,16 +5536,26 @@
             const tglMulai = document.getElementById('izin-tgl-mulai').value;
             let tglSelesai = document.getElementById('izin-tgl-selesai').value;
             let jumlah = document.getElementById('izin-jumlah').value;
-            let alasan = document.getElementById('izin-alasan').value;
+            let alasan = (document.getElementById('izin-alasan').value || '').trim();
+
+            if (!tglMulai) {
+                showToast('Tanggal mulai harus dipilih.', 'warning');
+                return;
+            }
+
+            if (!alasan) {
+                showToast('Keterangan / alasan harus diisi.', 'warning');
+                return;
+            }
 
             let finalJenis = jenis;
             let finalAlasan = alasan;
-            let finalJumlah = jumlah;
+            let finalJumlah = jumlah || '1';
 
             if (jenis === 'Izin Jam') {
                 const kat = document.getElementById('izin-jam-kategori').value;
-                const jMulai = document.getElementById('izin-jam-mulai').value;
-                const jSelesai = document.getElementById('izin-jam-selesai').value;
+                const jMulai = document.getElementById('izin-jam-mulai').value || '08:00';
+                const jSelesai = document.getElementById('izin-jam-selesai').value || '10:00';
                 finalJenis = 'Izin Jam (' + kat + ')';
                 finalAlasan = '[' + jMulai + ' - ' + jSelesai + '] ' + alasan;
                 finalJumlah = '1';
@@ -5547,6 +5567,12 @@
                     return;
                 }
                 finalJenis = 'Cuti Khusus: ' + namaKhusus;
+                if (!tglSelesai) tglSelesai = tglMulai;
+            } else {
+                if (!tglSelesai) {
+                    showToast('Tanggal selesai harus dipilih.', 'warning');
+                    return;
+                }
             }
 
             const btn = document.getElementById('btn-submit-izin');
