@@ -1066,8 +1066,14 @@ function getKaryawanDashboard(nik, monthYear) {
       } else {
         const matchedShift = shifts.find(s => s.id_shift === r.id_shift);
         if (matchedShift) {
-          shiftName = matchedShift.nama_shift;
-          shiftTime = matchedShift.jam_masuk + ' - ' + matchedShift.jam_pulang;
+          shiftName = matchedShift.nama_shift || r.id_shift;
+          if (matchedShift.jam_masuk && matchedShift.jam_pulang) {
+            shiftTime = matchedShift.jam_masuk + ' - ' + matchedShift.jam_pulang;
+          } else if (matchedShift.jam_masuk) {
+            shiftTime = matchedShift.jam_masuk;
+          } else {
+            shiftTime = '';
+          }
         }
       }
 
@@ -1099,8 +1105,12 @@ function getKaryawanDashboard(nik, monthYear) {
         shiftInfo = labelMap[shiftVal] || shiftVal;
       } else {
         const matched = shifts.find(s => s.id_shift === userRoster.id_shift);
-        if (matched) shiftInfo = matched.nama_shift + ' (' + matched.jam_masuk + ' - ' + matched.jam_pulang + ')';
-        else shiftInfo = userRoster.id_shift;
+        if (matched) {
+          const jamStr = (matched.jam_masuk && matched.jam_pulang) ? ' (' + matched.jam_masuk + ' - ' + matched.jam_pulang + ')' : (matched.jam_masuk ? ' (' + matched.jam_masuk + ')' : '');
+          shiftInfo = (matched.nama_shift || userRoster.id_shift) + jamStr;
+        } else {
+          shiftInfo = userRoster.id_shift;
+        }
       }
     }
 
@@ -2023,24 +2033,33 @@ function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
       const sheetRoster = ss.getSheetByName(CONFIG.SHEET_ROSTER);
       const rosterData = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
 
+      const rPengaju = rosterData.find(r => r && r.nik === item.nik_pengaju && r.tanggal === item.tanggal_pengaju);
+      const rTujuan = rosterData.find(r => r && r.nik === item.nik_tujuan && r.tanggal === item.tanggal_tujuan);
+
+      const shiftPengajuId = rPengaju ? (rPengaju.id_shift || rPengaju.status_hari) : item.shift_pengaju;
+      const shiftPengajuStatus = rPengaju ? (rPengaju.status_hari || rPengaju.id_shift) : item.shift_pengaju;
+
+      const shiftTujuanId = rTujuan ? (rTujuan.id_shift || rTujuan.status_hari) : item.shift_tujuan;
+      const shiftTujuanStatus = rTujuan ? (rTujuan.status_hari || rTujuan.id_shift) : item.shift_tujuan;
+
       // 1. Update Roster Pengaju pada tanggal_pengaju menjadi shift_tujuan
       const idxPengaju = rosterData.findIndex(r => r && r.nik === item.nik_pengaju && r.tanggal === item.tanggal_pengaju);
       if (idxPengaju !== -1) {
-        sheetRoster.getRange(idxPengaju + 2, 4).setValue(item.shift_tujuan);
-        sheetRoster.getRange(idxPengaju + 2, 5).setValue(item.shift_tujuan);
+        sheetRoster.getRange(idxPengaju + 2, 4).setValue(shiftTujuanId);
+        sheetRoster.getRange(idxPengaju + 2, 5).setValue(shiftTujuanStatus);
       } else {
         const newId1 = 'RST-' + Date.now().toString().slice(-6);
-        sheetRoster.appendRow([newId1, item.nik_pengaju, item.tanggal_pengaju, item.shift_tujuan, item.shift_tujuan]);
+        sheetRoster.appendRow([newId1, item.nik_pengaju, item.tanggal_pengaju, shiftTujuanId, shiftTujuanStatus]);
       }
 
       // 2. Update Roster Tujuan pada tanggal_tujuan menjadi shift_pengaju
       const idxTujuan = rosterData.findIndex(r => r && r.nik === item.nik_tujuan && r.tanggal === item.tanggal_tujuan);
       if (idxTujuan !== -1) {
-        sheetRoster.getRange(idxTujuan + 2, 4).setValue(item.shift_pengaju);
-        sheetRoster.getRange(idxTujuan + 2, 5).setValue(item.shift_pengaju);
+        sheetRoster.getRange(idxTujuan + 2, 4).setValue(shiftPengajuId);
+        sheetRoster.getRange(idxTujuan + 2, 5).setValue(shiftPengajuStatus);
       } else {
         const newId2 = 'RST-' + (Date.now() + 1).toString().slice(-6);
-        sheetRoster.appendRow([newId2, item.nik_tujuan, item.tanggal_tujuan, item.shift_pengaju, item.shift_pengaju]);
+        sheetRoster.appendRow([newId2, item.nik_tujuan, item.tanggal_tujuan, shiftPengajuId, shiftPengajuStatus]);
       }
     }
 
@@ -2066,6 +2085,56 @@ function getTukarShiftData(nik) {
       .filter(e => e && e.departemen === dept && e.nik !== nik && e.status_akun === 'Approved' && e.status_kerja !== 'Resign')
       .map(e => ({ nik: e.nik, nama: e.nama, jabatan: e.jabatan }));
 
+    const colleagueNiks = {};
+    colleagues.forEach(c => { colleagueNiks[c.nik] = true; });
+
+    const allRoster = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
+    const shifts = getSheetDataAsObjects(CONFIG.SHEET_SHIFT) || [];
+
+    const shiftMap = {};
+    shifts.forEach(s => {
+      if (s && s.id_shift) {
+        let jamStr = '';
+        if (s.jam_masuk && s.jam_pulang) jamStr = s.jam_masuk + ' - ' + s.jam_pulang;
+        else if (s.jam_masuk) jamStr = s.jam_masuk;
+        shiftMap[s.id_shift] = {
+          nama: s.nama_shift || s.id_shift,
+          jam: jamStr
+        };
+      }
+    });
+
+    const labelMap = {
+      'OFF': 'OFF (Libur)',
+      'CT': 'Cuti Tahunan (CT)',
+      'PH': 'Publik Holiday (PH)',
+      'EO': 'Extra Off (EO)',
+      'S': 'Sakit (S)',
+      'I': 'Izin (I)',
+      'CK': 'Cuti Khusus (CK)'
+    };
+
+    const colleagueRosters = allRoster
+      .filter(r => r && colleagueNiks[r.nik] && r.tanggal)
+      .map(r => {
+        const shiftVal = r.id_shift || r.status_hari;
+        let sName = shiftVal;
+        let sJam = '';
+        if (labelMap[shiftVal]) {
+          sName = labelMap[shiftVal];
+        } else if (shiftMap[r.id_shift]) {
+          sName = shiftMap[r.id_shift].nama;
+          sJam = shiftMap[r.id_shift].jam;
+        }
+        return {
+          nik: r.nik,
+          tanggal: r.tanggal,
+          id_shift: r.id_shift,
+          shift_nama: sName,
+          shift_jam: sJam
+        };
+      });
+
     const allTukar = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
 
     const myRequests = allTukar.filter(t => t && t.nik_pengaju === nik).reverse();
@@ -2075,6 +2144,7 @@ function getTukarShiftData(nik) {
     return {
       success: true,
       colleagues: colleagues,
+      colleagueRosters: colleagueRosters,
       myRequests: myRequests,
       incomingRequests: incomingRequests,
       incomingHistory: incomingHistory

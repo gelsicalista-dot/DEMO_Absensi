@@ -2641,7 +2641,7 @@
                         </div>
                         <div>
                             <label class="block text-[10px] text-slate-500 font-semibold mb-1">Shift / Jam Saya</label>
-                            <input type="text" id="ts-shift-pengaju" required class="w-full p-2 bg-white border rounded-lg text-xs" placeholder="Misal: Pagi / 07:00">
+                            <input type="text" id="ts-shift-pengaju" required class="w-full p-2 bg-white border rounded-lg text-xs font-semibold text-slate-800" placeholder="Otomatis terisi dari jadwal Anda...">
                         </div>
                     </div>
                 </div>
@@ -2651,18 +2651,18 @@
                     <span class="text-[11px] font-bold text-indigo-900 uppercase tracking-wider block">2. Rekan Satu Departemen</span>
                     <div>
                         <label class="block text-[10px] text-indigo-700 font-semibold mb-1">Pilih Rekan Kerja</label>
-                        <select id="ts-nik-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-semibold text-slate-800">
+                        <select id="ts-nik-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-semibold text-slate-800" onchange="autoFillColleagueShift()">
                             <option value="">-- Pilih Rekan Satu Departemen --</option>
                         </select>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-[10px] text-indigo-700 font-semibold mb-1">Tanggal Shift Rekan</label>
-                            <input type="date" id="ts-tgl-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs">
+                            <input type="date" id="ts-tgl-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs" onchange="autoFillColleagueShift()">
                         </div>
                         <div>
                             <label class="block text-[10px] text-indigo-700 font-semibold mb-1">Shift Yang Diambil</label>
-                            <input type="text" id="ts-shift-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs" placeholder="Misal: Siang / 15:00">
+                            <input type="text" id="ts-shift-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-900" placeholder="Otomatis terisi dari jadwal rekan...">
                         </div>
                     </div>
                 </div>
@@ -2910,6 +2910,7 @@
         let isPayrollUnlocked = false;
         let currentEmpRosterMonthStr = null;
         let currentPersonalRosterList = [];
+        let currentColleagueRostersList = [];
 
         function runBackend(functionName, argsArray, successCallback, errorCallback) {
             if (typeof google !== 'undefined' && google.script && google.script.run) {
@@ -5581,6 +5582,21 @@
 
         function openModalTukarShift() {
             document.getElementById('modal-tukar-shift').classList.remove('hidden');
+
+            const tglPengajuElem = document.getElementById('ts-tgl-pengaju');
+            const tglTujuanElem = document.getElementById('ts-tgl-tujuan');
+            if (tglPengajuElem && !tglPengajuElem.value) {
+                const now = new Date();
+                const todayIso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+                tglPengajuElem.value = todayIso;
+                if (tglTujuanElem && !tglTujuanElem.value) {
+                    tglTujuanElem.value = todayIso;
+                }
+            } else if (tglPengajuElem && tglTujuanElem && !tglTujuanElem.value) {
+                tglTujuanElem.value = tglPengajuElem.value;
+            }
+
+            autoFillMyShiftForDate();
             loadTukarShiftData();
         }
 
@@ -5590,11 +5606,56 @@
 
         function autoFillMyShiftForDate() {
             const tgl = document.getElementById('ts-tgl-pengaju').value;
-            if (!tgl || !currentPersonalRosterList) return;
-            const item = currentPersonalRosterList.find(r => r.tanggal === tgl);
-            if (item) {
-                const shiftDisplay = (item.shift_nama || item.id_shift || '') + (item.shift_jam ? ' (' + item.shift_jam + ')' : '');
-                document.getElementById('ts-shift-pengaju').value = shiftDisplay;
+            if (!tgl) return;
+
+            // 1. Auto-fill Shift Saya
+            if (currentPersonalRosterList && currentPersonalRosterList.length > 0) {
+                const item = currentPersonalRosterList.find(r => r.tanggal === tgl);
+                if (item) {
+                    let jamPart = '';
+                    if (item.shift_jam && item.shift_jam.trim() !== '-' && item.shift_jam.trim() !== '- -') {
+                        jamPart = ' (' + item.shift_jam + ')';
+                    }
+                    const shiftDisplay = (item.shift_nama || item.id_shift || '') + jamPart;
+                    document.getElementById('ts-shift-pengaju').value = shiftDisplay;
+                } else {
+                    document.getElementById('ts-shift-pengaju').value = 'OFF (Libur)';
+                }
+            }
+
+            // 2. Sinkronkan Tanggal Rekan secara default ke tanggal yang sama
+            const tglTujuanElem = document.getElementById('ts-tgl-tujuan');
+            if (tglTujuanElem) {
+                tglTujuanElem.value = tgl;
+            }
+
+            // 3. Auto-fill jadwal rekan jika rekan sudah dipilih
+            autoFillColleagueShift();
+        }
+
+        function autoFillColleagueShift() {
+            const nikRekan = document.getElementById('ts-nik-tujuan').value;
+            const tglRekan = document.getElementById('ts-tgl-tujuan').value;
+            const shiftTujuanInput = document.getElementById('ts-shift-tujuan');
+            if (!shiftTujuanInput) return;
+
+            if (!nikRekan || !tglRekan) {
+                shiftTujuanInput.value = '';
+                return;
+            }
+
+            if (currentColleagueRostersList && currentColleagueRostersList.length > 0) {
+                const item = currentColleagueRostersList.find(r => r.nik === nikRekan && r.tanggal === tglRekan);
+                if (item) {
+                    let jamPart = '';
+                    if (item.shift_jam && item.shift_jam.trim() !== '-' && item.shift_jam.trim() !== '- -') {
+                        jamPart = ' (' + item.shift_jam + ')';
+                    }
+                    const shiftDisplay = (item.shift_nama || item.id_shift || '') + jamPart;
+                    shiftTujuanInput.value = shiftDisplay;
+                } else {
+                    shiftTujuanInput.value = 'OFF (Libur)';
+                }
             }
         }
 
@@ -5603,17 +5664,25 @@
             runBackend('getTukarShiftData', [currentUser.nik], function (res) {
                 if (!res.success) return;
 
+                // Simpan cache roster seluruh rekan satu departemen
+                currentColleagueRostersList = res.colleagueRosters || [];
+
                 // 1. Populate dropdown rekan kerja 1 departemen
                 const selTujuan = document.getElementById('ts-nik-tujuan');
                 if (selTujuan && res.colleagues) {
+                    const currentSelectedNik = selTujuan.value;
                     selTujuan.innerHTML = '<option value="">-- Pilih Rekan Satu Departemen --</option>';
                     res.colleagues.forEach(c => {
                         const opt = document.createElement('option');
                         opt.value = c.nik;
                         opt.innerText = c.nama + ' (' + (c.jabatan || 'Staf') + ')';
+                        if (c.nik === currentSelectedNik) opt.selected = true;
                         selTujuan.appendChild(opt);
                     });
                 }
+
+                // Auto-fill jadwal rekan jika tanggal & rekan sudah dipilih
+                autoFillColleagueShift();
 
                 // 2. Render Permintaan Masuk yang menunggu respon saya
                 const incomingBox = document.getElementById('emp-tukar-shift-incoming-container');
