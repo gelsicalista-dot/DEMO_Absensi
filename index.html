@@ -752,6 +752,31 @@
                         </div>
                     </div>
 
+                    <!-- Persetujuan Tukar Shift Staf (Approval Final HOD) -->
+                    <div class="bg-white p-4 rounded-2xl border space-y-3">
+                        <div class="flex items-center justify-between border-b pb-2">
+                            <h4 class="font-bold text-gray-800 text-xs flex items-center gap-2">
+                                <i class="fa-solid fa-repeat text-purple-800"></i> Persetujuan Tukar Shift Staf Departemen
+                            </h4>
+                            <span class="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full">Final di HOD</span>
+                        </div>
+                        <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                            <table class="w-full text-[11px] text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-purple-50 text-purple-900 uppercase font-bold border-b">
+                                        <th class="p-2">Pengaju & Jadwal</th>
+                                        <th class="p-2">Rekan & Jadwal</th>
+                                        <th class="p-2">Alasan</th>
+                                        <th class="p-2 text-center">Aksi HOD</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-hod-pending-tukar-shift">
+                                    <tr><td colspan="4" class="p-3 text-center text-gray-400">Tidak ada pengajuan tukar shift pending.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div class="bg-white p-5 rounded-2xl border space-y-4">
                         <div class="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
                             <div>
@@ -911,25 +936,31 @@
                             </h3>
                             <p class="text-[11px] text-slate-500" id="emp-roster-period-subtitle">Siklus Periode Cut-off Roster Shift Kerja</p>
                         </div>
-                        <div class="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                            <button onclick="changeEmpRosterCycle(-1)"
-                                class="px-2.5 py-1 text-[11px] bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg border shadow-sm flex items-center gap-1 transition active:scale-95">
-                                <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" stroke-width="2"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-                                </svg>
-                                Sebelumnya
+                        <div class="flex items-center gap-2">
+                            <button onclick="openModalTukarShift()"
+                                class="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition active:scale-95">
+                                <i class="fa-solid fa-repeat"></i> <span>Tukar Shift</span>
                             </button>
-                            <span id="emp-roster-month-label"
-                                class="px-2 text-xs font-extrabold text-indigo-900 font-mono"></span>
-                            <button onclick="changeEmpRosterCycle(1)"
-                                class="px-2.5 py-1 text-[11px] bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg border shadow-sm flex items-center gap-1 transition active:scale-95">
-                                Selanjutnya
-                                <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" stroke-width="2"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                                </svg>
-                            </button>
+                            <div class="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                <button onclick="changeEmpRosterCycle(-1)"
+                                    class="px-2.5 py-1 text-[11px] bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg border shadow-sm flex items-center gap-1 transition active:scale-95">
+                                    <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" stroke-width="2"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    Sebelumnya
+                                </button>
+                                <span id="emp-roster-month-label"
+                                    class="px-2 text-xs font-extrabold text-indigo-900 font-mono"></span>
+                                <button onclick="changeEmpRosterCycle(1)"
+                                    class="px-2.5 py-1 text-[11px] bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg border shadow-sm flex items-center gap-1 transition active:scale-95">
+                                    Selanjutnya
+                                    <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" stroke-width="2"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -949,6 +980,26 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- KOTAK PERTUKARAN SHIFT (SHIFT SWAP) -->
+                    <div class="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <i class="fa-solid fa-repeat text-indigo-600"></i> Pertukaran Shift Antar Rekan Departemen
+                            </h4>
+                            <button onclick="openModalTukarShift()" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition active:scale-95">
+                                <i class="fa-solid fa-plus"></i> <span>Ajukan Tukar</span>
+                            </button>
+                        </div>
+
+                        <!-- Permintaan Masuk yang Perlu Respon Saya -->
+                        <div id="emp-tukar-shift-incoming-container" class="space-y-2 hidden">
+                        </div>
+
+                        <!-- Riwayat Pengajuan Tukar Shift Saya -->
+                        <div id="emp-tukar-shift-history-container" class="space-y-2">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2487,26 +2538,58 @@
             <form onsubmit="handleIzinSubmit(event)" class="space-y-3">
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Jenis Pengajuan</label>
-                    <select id="izin-jenis" class="w-full p-2.5 border rounded-xl text-xs">
+                    <select id="izin-jenis" onchange="toggleIzinFormFields()" class="w-full p-2.5 border rounded-xl text-xs font-semibold bg-white">
                         <option value="Cuti Tahunan">Cuti Tahunan (CT)</option>
                         <option value="Publik Holiday">Publik Holiday (PH)</option>
                         <option value="Extra Off">Extra Off (EO)</option>
                         <option value="Sakit">Sakit (S)</option>
                         <option value="Izin">Izin (I)</option>
+                        <option value="Izin Jam">Izin Jam-Jaman (Terlambat Masuk / Pulang Cepat)</option>
+                        <option value="Lainnya">Lainnya (Cuti Khusus - Kode CK)</option>
                     </select>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+
+                <!-- Field Khusus: Izin Jam-Jaman -->
+                <div id="wrapper-izin-jam" class="hidden p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl space-y-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-indigo-900 mb-1">Kategori Izin Jam</label>
+                        <select id="izin-jam-kategori" class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-semibold text-slate-800">
+                            <option value="Terlambat Masuk">Izin Terlambat Masuk (Late In)</option>
+                            <option value="Pulang Cepat">Izin Pulang Lebih Cepat (Early Out)</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[11px] font-bold text-indigo-900 mb-1">Jam Mulai</label>
+                            <input type="time" id="izin-jam-mulai" class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs" value="08:00">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-indigo-900 mb-1">Jam Selesai</label>
+                            <input type="time" id="izin-jam-selesai" class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs" value="10:00">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-indigo-600 font-medium">⚡ Izin jam-jaman cukup disetujui HOD (bebas denda keterlambatan).</p>
+                </div>
+
+                <!-- Field Khusus: Cuti Khusus (Lainnya) -->
+                <div id="wrapper-cuti-khusus" class="hidden p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl space-y-1.5">
+                    <label class="block text-[11px] font-bold text-emerald-900">Nama / Jenis Cuti Khusus *</label>
+                    <input type="text" id="izin-nama-khusus" class="w-full p-2 bg-white border border-emerald-200 rounded-lg text-xs placeholder:text-slate-400" placeholder="Misal: Cuti Menikah, Cuti Istri Melahirkan, Duka, dll">
+                    <p class="text-[10px] text-emerald-700 font-medium">✨ Cuti ini berkode <b>CK</b> di Roster dan <b>TIDAK</b> memotong kuota cuti tahunan Anda.</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3" id="wrapper-izin-dates">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal Mulai</label>
                         <input type="date" id="izin-tgl-mulai" required class="w-full p-2.5 border rounded-xl text-xs">
                     </div>
-                    <div>
+                    <div id="wrapper-tgl-selesai">
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal Selesai</label>
                         <input type="date" id="izin-tgl-selesai" required
                             class="w-full p-2.5 border rounded-xl text-xs">
                     </div>
                 </div>
-                <div>
+                <div id="wrapper-jumlah-hari">
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Jumlah Hari</label>
                     <input type="number" id="izin-jumlah" min="1" value="1" required
                         class="w-full p-2.5 border rounded-xl text-xs">
@@ -2514,7 +2597,7 @@
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Alasan</label>
                     <textarea id="izin-alasan" rows="2" required
-                        class="w-full p-2.5 border rounded-xl text-xs"></textarea>
+                        class="w-full p-2.5 border rounded-xl text-xs" placeholder="Keterangan keperluan..."></textarea>
                 </div>
                 <div class="flex gap-2 justify-end mt-4">
                     <button type="button" onclick="closeModalIzin()"
@@ -2522,6 +2605,84 @@
                     <button type="submit" id="btn-submit-izin"
                         class="btn-primary px-4 py-2 text-xs flex items-center justify-center gap-2">
                         <span>Kirim Pengajuan</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: FORM TUKAR SHIFT ANTAR KARYAWAN 1 DEPARTEMEN -->
+    <div id="modal-tukar-shift"
+        class="fixed inset-0 bg-slate-950/70 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 transition-all">
+        <div class="card-saas p-6 w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto animate-sheet border border-slate-200/80 shadow-2xl">
+            <div class="flex items-center justify-between border-b pb-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-repeat"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-sm">Ajukan Tukar Shift</h3>
+                        <p class="text-[11px] text-slate-500">Khusus rekan 1 departemen (Approval HOD)</p>
+                    </div>
+                </div>
+                <button onclick="closeModalTukarShift()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form onsubmit="handleTukarShiftSubmit(event)" class="space-y-3.5 text-xs">
+                <!-- 1. Jadwal Saya yang Ingin Ditukar -->
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">1. Jadwal Shift Saya</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] text-slate-500 font-semibold mb-1">Tanggal Shift Saya</label>
+                            <input type="date" id="ts-tgl-pengaju" required class="w-full p-2 bg-white border rounded-lg text-xs" onchange="autoFillMyShiftForDate()">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-500 font-semibold mb-1">Shift / Jam Saya</label>
+                            <input type="text" id="ts-shift-pengaju" required class="w-full p-2 bg-white border rounded-lg text-xs" placeholder="Misal: Pagi / 07:00">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Rekan yang Diajak Tukar -->
+                <div class="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-2">
+                    <span class="text-[11px] font-bold text-indigo-900 uppercase tracking-wider block">2. Rekan Satu Departemen</span>
+                    <div>
+                        <label class="block text-[10px] text-indigo-700 font-semibold mb-1">Pilih Rekan Kerja</label>
+                        <select id="ts-nik-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-semibold text-slate-800">
+                            <option value="">-- Pilih Rekan Satu Departemen --</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] text-indigo-700 font-semibold mb-1">Tanggal Shift Rekan</label>
+                            <input type="date" id="ts-tgl-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-indigo-700 font-semibold mb-1">Shift Yang Diambil</label>
+                            <input type="text" id="ts-shift-tujuan" required class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs" placeholder="Misal: Siang / 15:00">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Alasan Pertukaran Shift *</label>
+                    <textarea id="ts-alasan" rows="2" required class="w-full p-2.5 border rounded-xl text-xs placeholder:text-slate-400" placeholder="Tuliskan alasan pertukaran shift..."></textarea>
+                </div>
+
+                <div class="p-2.5 bg-amber-50 rounded-xl border border-amber-200/60 flex items-start gap-2">
+                    <i class="fa-solid fa-circle-info text-amber-600 mt-0.5 text-xs"></i>
+                    <p class="text-[10px] text-amber-800 leading-tight">
+                        Setelah dikirim, ajakan akan dikonfirmasi rekan terkait, kemudian disetujui HOD (otomatis swap jadwal Roster).
+                    </p>
+                </div>
+
+                <div class="flex gap-2 justify-end pt-2">
+                    <button type="button" onclick="closeModalTukarShift()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold transition">Batal</button>
+                    <button type="submit" id="btn-submit-tukar-shift" class="btn-primary px-4 py-2 text-xs flex items-center justify-center gap-1.5 font-bold">
+                        <span>Kirim Permintaan</span>
                     </button>
                 </div>
             </form>
@@ -2748,6 +2909,7 @@
 
         let isPayrollUnlocked = false;
         let currentEmpRosterMonthStr = null;
+        let currentPersonalRosterList = [];
 
         function runBackend(functionName, argsArray, successCallback, errorCallback) {
             if (typeof google !== 'undefined' && google.script && google.script.run) {
@@ -3865,6 +4027,7 @@
                             }
                         }
 
+                        currentPersonalRosterList = res.personalRoster || [];
                         if (res.personalRoster && res.personalRoster.length > 0) {
                             const daysName = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
@@ -3896,6 +4059,7 @@
 
                                 if (shiftVal === 'OFF') badgeClass = 'bg-rose-100 text-rose-800';
                                 else if (['CT', 'PH', 'EO', 'S', 'I'].includes(shiftVal)) badgeClass = 'bg-amber-100 text-amber-800';
+                                else if (shiftVal === 'CK') badgeClass = 'bg-purple-100 text-purple-800 font-bold border border-purple-200';
 
                                 let rowBgClass = 'border-b hover:bg-gray-50 text-xs';
                                 if (isToday) {
@@ -3912,6 +4076,8 @@
                                 if (shiftVal === 'PH') {
                                     rowBgClass += ' bg-rose-100/80 font-bold';
                                     badgeClass = 'bg-rose-600 text-white font-extrabold';
+                                } else if (shiftVal === 'CK') {
+                                    rowBgClass += ' bg-purple-50/50 font-semibold';
                                 }
 
                                 tr.className = rowBgClass;
@@ -3933,6 +4099,9 @@
                             personalRosterBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-400">Belum ada jadwal roster yang dibuat oleh HOD untuk periode ini.</td></tr>';
                         }
                     }
+
+                    // Auto-load Tukar Shift data
+                    loadTukarShiftData();
                 }
             }, function (err) {
                 if (!isSilent) showToast('Gagal memuat dashboard karyawan.', 'error');
@@ -3989,6 +4158,27 @@
                         tbodyIzin.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-gray-400">Tidak ada pengajuan cuti staf pending HOD.</td></tr>';
                     }
 
+                    const tbodyTukar = document.getElementById('table-hod-pending-tukar-shift');
+                    if (tbodyTukar) {
+                        tbodyTukar.innerHTML = '';
+                        if (res.pendingTukarShiftHOD && res.pendingTukarShiftHOD.length > 0) {
+                            res.pendingTukarShiftHOD.forEach(item => {
+                                const tr = document.createElement('tr');
+                                tr.className = 'border-b hover:bg-purple-50/30';
+                                tr.innerHTML = '<td class="p-2"><span class="font-bold text-slate-900">' + item.nama_pengaju + '</span><br><span class="text-[10px] text-indigo-700 font-semibold">' + item.tanggal_pengaju + ' (' + item.shift_pengaju + ')</span></td>' +
+                                    '<td class="p-2"><span class="font-bold text-slate-900">' + item.nama_tujuan + '</span><br><span class="text-[10px] text-emerald-700 font-semibold">' + item.tanggal_tujuan + ' (' + item.shift_tujuan + ')</span></td>' +
+                                    '<td class="p-2 text-gray-500 italic max-w-[140px] truncate" title="' + (item.alasan || '') + '">' + (item.alasan || '-') + '</td>' +
+                                    '<td class="p-2 text-center flex justify-center gap-1.5">' +
+                                    '<button onclick="approveTukarShiftHODAction(\'' + item.id_tukar + '\', \'Approved\')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-sm transition active:scale-95">Approve</button>' +
+                                    '<button onclick="approveTukarShiftHODAction(\'' + item.id_tukar + '\', \'Reject\')" class="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-sm transition active:scale-95">Reject</button>' +
+                                    '</td>';
+                                tbodyTukar.appendChild(tr);
+                            });
+                        } else {
+                            tbodyTukar.innerHTML = '<tr><td colspan="4" class="p-3 text-center text-gray-400">Tidak ada pengajuan tukar shift pending HOD.</td></tr>';
+                        }
+                    }
+
                     const staffList = document.getElementById('hod-staff-list');
                     staffList.innerHTML = '';
                     res.deptEmployees.forEach(emp => {
@@ -4042,6 +4232,7 @@
             options += '<option value="EO" ' + (currentVal === 'EO' ? 'selected' : '') + '>EO (Extra Off)</option>';
             options += '<option value="S" ' + (currentVal === 'S' ? 'selected' : '') + '>S (Sakit)</option>';
             options += '<option value="I" ' + (currentVal === 'I' ? 'selected' : '') + '>I (Izin)</option>';
+            options += '<option value="CK" ' + (currentVal === 'CK' ? 'selected' : '') + '>CK (Cuti Khusus)</option>';
             return options;
         }
 
@@ -4049,6 +4240,7 @@
             if (currentVal === 'OFF') return 'bg-rose-50 text-rose-700 font-bold';
             if (currentVal === 'PH') return 'bg-rose-200 text-rose-900 font-extrabold border border-rose-300';
             if (['CT', 'EO', 'S', 'I'].includes(currentVal)) return 'bg-amber-50 text-amber-800 font-bold';
+            if (currentVal === 'CK') return 'bg-purple-100 text-purple-900 font-bold border border-purple-200';
 
             const isCustomShift = shifts && shifts.some(s => s.id_shift === currentVal);
             if (isCustomShift || (currentVal && currentVal.startsWith('SFT-'))) {
@@ -5293,8 +5485,34 @@
             );
         }
 
+        function toggleIzinFormFields() {
+            const jenis = document.getElementById('izin-jenis').value;
+            const wrapJam = document.getElementById('wrapper-izin-jam');
+            const wrapKhusus = document.getElementById('wrapper-cuti-khusus');
+            const wrapTglSelesai = document.getElementById('wrapper-tgl-selesai');
+            const wrapJumlah = document.getElementById('wrapper-jumlah-hari');
+
+            if (wrapJam) {
+                if (jenis === 'Izin Jam') {
+                    wrapJam.classList.remove('hidden');
+                    if (wrapTglSelesai) wrapTglSelesai.classList.add('hidden');
+                    if (wrapJumlah) wrapJumlah.classList.add('hidden');
+                } else {
+                    wrapJam.classList.add('hidden');
+                    if (wrapTglSelesai) wrapTglSelesai.classList.remove('hidden');
+                    if (wrapJumlah) wrapJumlah.classList.remove('hidden');
+                }
+            }
+
+            if (wrapKhusus) {
+                if (jenis === 'Lainnya') wrapKhusus.classList.remove('hidden');
+                else wrapKhusus.classList.add('hidden');
+            }
+        }
+
         function openModalIzin() {
             document.getElementById('modal-izin').classList.remove('hidden');
+            toggleIzinFormFields();
         }
 
         function closeModalIzin() {
@@ -5305,9 +5523,30 @@
             e.preventDefault();
             const jenis = document.getElementById('izin-jenis').value;
             const tglMulai = document.getElementById('izin-tgl-mulai').value;
-            const tglSelesai = document.getElementById('izin-tgl-selesai').value;
-            const jumlah = document.getElementById('izin-jumlah').value;
-            const alasan = document.getElementById('izin-alasan').value;
+            let tglSelesai = document.getElementById('izin-tgl-selesai').value;
+            let jumlah = document.getElementById('izin-jumlah').value;
+            let alasan = document.getElementById('izin-alasan').value;
+
+            let finalJenis = jenis;
+            let finalAlasan = alasan;
+            let finalJumlah = jumlah;
+
+            if (jenis === 'Izin Jam') {
+                const kat = document.getElementById('izin-jam-kategori').value;
+                const jMulai = document.getElementById('izin-jam-mulai').value;
+                const jSelesai = document.getElementById('izin-jam-selesai').value;
+                finalJenis = 'Izin Jam (' + kat + ')';
+                finalAlasan = '[' + jMulai + ' - ' + jSelesai + '] ' + alasan;
+                finalJumlah = '1';
+                tglSelesai = tglMulai;
+            } else if (jenis === 'Lainnya') {
+                const namaKhusus = (document.getElementById('izin-nama-khusus').value || '').trim();
+                if (!namaKhusus) {
+                    showToast('Harap isi Nama/Jenis Cuti Khusus.', 'warning');
+                    return;
+                }
+                finalJenis = 'Cuti Khusus: ' + namaKhusus;
+            }
 
             const btn = document.getElementById('btn-submit-izin');
             if (btn) {
@@ -5315,7 +5554,7 @@
                 btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Mengirim...</span>';
             }
 
-            runBackend('submitIzinCuti', [currentUser.nik, tglMulai, tglSelesai, jumlah, jenis, alasan], function (res) {
+            runBackend('submitIzinCuti', [currentUser.nik, tglMulai, tglSelesai, finalJumlah, finalJenis, finalAlasan], function (res) {
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = '<span>Kirim Pengajuan</span>';
@@ -5323,7 +5562,7 @@
                 if (res.success) {
                     showToast(res.message, 'success');
                     closeModalIzin();
-                    loadKaryawanDashboard();
+                    loadKaryawanDashboard(true);
                 } else {
                     showToast(res.message, 'error');
                 }
@@ -5333,6 +5572,186 @@
                     btn.innerHTML = '<span>Kirim Pengajuan</span>';
                 }
                 showToast('Gagal mengirim pengajuan: ' + (err.message || err), 'error');
+            });
+        }
+
+        /* ==========================================================================
+           TUKAR SHIFT (FRONTEND CONTROLLER)
+           ========================================================================== */
+
+        function openModalTukarShift() {
+            document.getElementById('modal-tukar-shift').classList.remove('hidden');
+            loadTukarShiftData();
+        }
+
+        function closeModalTukarShift() {
+            document.getElementById('modal-tukar-shift').classList.add('hidden');
+        }
+
+        function autoFillMyShiftForDate() {
+            const tgl = document.getElementById('ts-tgl-pengaju').value;
+            if (!tgl || !currentPersonalRosterList) return;
+            const item = currentPersonalRosterList.find(r => r.tanggal === tgl);
+            if (item) {
+                const shiftDisplay = (item.shift_nama || item.id_shift || '') + (item.shift_jam ? ' (' + item.shift_jam + ')' : '');
+                document.getElementById('ts-shift-pengaju').value = shiftDisplay;
+            }
+        }
+
+        function loadTukarShiftData() {
+            if (!currentUser) return;
+            runBackend('getTukarShiftData', [currentUser.nik], function (res) {
+                if (!res.success) return;
+
+                // 1. Populate dropdown rekan kerja 1 departemen
+                const selTujuan = document.getElementById('ts-nik-tujuan');
+                if (selTujuan && res.colleagues) {
+                    selTujuan.innerHTML = '<option value="">-- Pilih Rekan Satu Departemen --</option>';
+                    res.colleagues.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.nik;
+                        opt.innerText = c.nama + ' (' + (c.jabatan || 'Staf') + ')';
+                        selTujuan.appendChild(opt);
+                    });
+                }
+
+                // 2. Render Permintaan Masuk yang menunggu respon saya
+                const incomingBox = document.getElementById('emp-tukar-shift-incoming-container');
+                if (incomingBox) {
+                    if (res.incomingRequests && res.incomingRequests.length > 0) {
+                        incomingBox.classList.remove('hidden');
+                        incomingBox.innerHTML = '<div class="p-3.5 bg-amber-50/90 border border-amber-200 rounded-2xl space-y-2.5 shadow-sm">' +
+                            '<h5 class="text-xs font-bold text-amber-900 flex items-center gap-1.5"><i class="fa-solid fa-bell text-amber-600"></i> Permintaan Tukar Shift Masuk (' + res.incomingRequests.length + ')</h5>' +
+                            res.incomingRequests.map(item => `
+                                <div class="p-3 bg-white border border-amber-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-sm">
+                                    <div>
+                                        <p class="font-bold text-slate-900"><b>${item.nama_pengaju}</b> mengajak tukar shift:</p>
+                                        <p class="text-[11px] text-slate-600 mt-0.5">Shift Dia: <span class="font-bold text-indigo-700">${item.tanggal_pengaju} (${item.shift_pengaju})</span> ➔ Jadwal Anda: <span class="font-bold text-emerald-700">${item.tanggal_tujuan} (${item.shift_tujuan})</span></p>
+                                        <p class="text-[10px] text-slate-400 italic mt-0.5">Alasan: "${item.alasan || '-'}"</p>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                                        <button onclick="respondTukarShiftRekanAction('${item.id_tukar}', 'Accept')" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[11px] transition active:scale-95 shadow-sm">Setujui</button>
+                                        <button onclick="respondTukarShiftRekanAction('${item.id_tukar}', 'Reject')" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-[11px] transition active:scale-95 shadow-sm">Tolak</button>
+                                    </div>
+                                </div>
+                            `).join('') +
+                            '</div>';
+                    } else {
+                        incomingBox.classList.add('hidden');
+                        incomingBox.innerHTML = '';
+                    }
+                }
+
+                // 3. Render Riwayat Pengajuan Saya
+                const historyBox = document.getElementById('emp-tukar-shift-history-container');
+                if (historyBox) {
+                    if (res.myRequests && res.myRequests.length > 0) {
+                        historyBox.innerHTML = '<div class="space-y-1.5">' +
+                            '<span class="text-[11px] font-bold text-slate-600 block">Riwayat Pengajuan Tukar Shift Saya:</span>' +
+                            res.myRequests.slice(0, 5).map(m => {
+                                let stBadge = 'bg-amber-100 text-amber-800 border-amber-200';
+                                let stLabel = 'Menunggu Rekan';
+                                if (m.status === 'Pending_HOD') {
+                                    stBadge = 'bg-blue-100 text-blue-800 border-blue-200';
+                                    stLabel = 'Menunggu Approval HOD';
+                                } else if (m.status === 'Approved') {
+                                    stBadge = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                                    stLabel = 'Disetujui HOD (Jadwal Berubah)';
+                                } else if (m.status.includes('Rejected')) {
+                                    stBadge = 'bg-rose-100 text-rose-800 border-rose-200';
+                                    stLabel = m.status === 'Rejected_Rekan' ? 'Ditolak Rekan' : 'Ditolak HOD';
+                                }
+                                return `
+                                    <div class="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs">
+                                        <div>
+                                            <p class="font-bold text-slate-800">Tukar dengan: ${m.nama_tujuan}</p>
+                                            <p class="text-[10px] text-slate-500">${m.tanggal_pengaju} (${m.shift_pengaju}) ⇄ ${m.tanggal_tujuan} (${m.shift_tujuan})</p>
+                                        </div>
+                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border ${stBadge}">${stLabel}</span>
+                                    </div>
+                                `;
+                            }).join('') +
+                            '</div>';
+                    } else {
+                        historyBox.innerHTML = '<p class="text-[11px] text-slate-400 py-1">Belum ada riwayat pengajuan tukar shift.</p>';
+                    }
+                }
+            });
+        }
+
+        function handleTukarShiftSubmit(e) {
+            e.preventDefault();
+            const tglPengaju = document.getElementById('ts-tgl-pengaju').value;
+            const shiftPengaju = document.getElementById('ts-shift-pengaju').value;
+            const nikTujuan = document.getElementById('ts-nik-tujuan').value;
+            const tglTujuan = document.getElementById('ts-tgl-tujuan').value;
+            const shiftTujuan = document.getElementById('ts-shift-tujuan').value;
+            const alasan = document.getElementById('ts-alasan').value;
+
+            if (!nikTujuan) {
+                showToast('Pilih rekan kerja satu departemen.', 'warning');
+                return;
+            }
+
+            const btn = document.getElementById('btn-submit-tukar-shift');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Mengirim...</span>';
+            }
+
+            runBackend('submitTukarShift', [currentUser.nik, tglPengaju, shiftPengaju, nikTujuan, tglTujuan, shiftTujuan, alasan], function (res) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>Kirim Permintaan</span>';
+                }
+                if (res.success) {
+                    showToast(res.message, 'success');
+                    closeModalTukarShift();
+                    loadTukarShiftData();
+                } else {
+                    showToast(res.message, 'error');
+                }
+            }, function (err) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>Kirim Permintaan</span>';
+                }
+                showToast('Gagal mengirim tukar shift: ' + (err.message || err), 'error');
+            });
+        }
+
+        function respondTukarShiftRekanAction(idTukar, action) {
+            const promptText = action === 'Accept'
+                ? 'Apakah Anda bersedia MENYETUJUI pertukaran shift ini? Pengajuan akan diteruskan ke HOD.'
+                : 'Apakah Anda yakin ingin MENOLAK pertukaran shift ini?';
+            if (!confirm(promptText)) return;
+
+            runBackend('respondTukarShiftRekan', [currentUser.nik, idTukar, action], function (res) {
+                if (res.success) {
+                    showToast(res.message, 'success');
+                    loadKaryawanDashboard(true);
+                    loadTukarShiftData();
+                } else {
+                    showToast(res.message, 'error');
+                }
+            });
+        }
+
+        function approveTukarShiftHODAction(idTukar, action) {
+            let reason = '';
+            if (action === 'Reject') {
+                reason = prompt('Masukkan alasan penolakan tukar shift:');
+                if (reason === null) return;
+            }
+
+            runBackend('approveTukarShiftHOD', [currentUser.nik, idTukar, action, reason], function (res) {
+                if (res.success) {
+                    showToast(res.message, 'success');
+                    loadHODDashboardData(true);
+                    loadKaryawanDashboard(true);
+                } else {
+                    showToast(res.message, 'error');
+                }
             });
         }
 

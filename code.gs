@@ -19,7 +19,8 @@ const CONFIG = {
   SHEET_EDIT_PROFIL: 'Tabel_Edit_Profil',
   SHEET_GAJI_MASTER: 'Tabel_Gaji_Master',
   SHEET_PAYROLL_BULANAN: 'Tabel_Payroll_Bulanan',
-  SHEET_PINJAMAN: 'Tabel_Pinjaman_Karyawan'
+  SHEET_PINJAMAN: 'Tabel_Pinjaman_Karyawan',
+  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift'
 };
 
 /**
@@ -141,6 +142,14 @@ function doPost(e) {
       result = getLoansList();
     } else if (action === 'saveLoan') {
       result = saveLoan(payload[0], payload[1], payload[2], payload[3]);
+    } else if (action === 'submitTukarShift') {
+      result = submitTukarShift(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6]);
+    } else if (action === 'respondTukarShiftRekan') {
+      result = respondTukarShiftRekan(payload[0], payload[1], payload[2]);
+    } else if (action === 'approveTukarShiftHOD') {
+      result = approveTukarShiftHOD(payload[0], payload[1], payload[2], payload[3]);
+    } else if (action === 'getTukarShiftData') {
+      result = getTukarShiftData(payload[0]);
     } else {
       result = { success: false, message: 'Action API tidak dikenal.' };
     }
@@ -207,6 +216,11 @@ function setupDatabase() {
     ],
     [CONFIG.SHEET_PINJAMAN]: [
       'id_pinjaman', 'nik', 'tanggal_pinjam', 'total_pinjaman', 'cicilan_per_bulan', 'sisa_pinjaman', 'status_lunas'
+    ],
+    [CONFIG.SHEET_TUKAR_SHIFT]: [
+      'id_tukar', 'nik_pengaju', 'nama_pengaju', 'tanggal_pengaju', 'shift_pengaju',
+      'nik_tujuan', 'nama_tujuan', 'tanggal_tujuan', 'shift_tujuan', 'departemen',
+      'alasan', 'status', 'catatan_hod', 'created_at'
     ]
   };
 
@@ -860,14 +874,15 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
     if (actionType === 'MASUK') {
       if (userRosterToday) {
         const shiftVal = userRosterToday.id_shift || userRosterToday.status_hari;
-        if (['OFF', 'CT', 'PH', 'EO', 'S', 'I'].includes(shiftVal)) {
+        if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
           const labelMap = {
             'OFF': 'OFF (Libur)',
             'CT': 'Cuti Tahunan (CT)',
             'PH': 'Publik Holiday (PH)',
             'EO': 'Extra Off (EO)',
             'S': 'Sakit (S)',
-            'I': 'Izin (I)'
+            'I': 'Izin (I)',
+            'CK': 'Cuti Khusus (CK)'
           };
           return { success: false, message: 'Hari ini jadwal Anda adalah ' + (labelMap[shiftVal] || shiftVal) + ' pada Roster Shift.' };
         }
@@ -902,6 +917,20 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
       if (now.getTime() > scheduleTime.getTime() + toleranceMs) {
         lateMinutes = Math.round((now.getTime() - scheduleTime.getTime()) / 60000);
         status = 'Terlambat';
+
+        // Cek dispensasi jika ada izin jam-jaman yang disetujui HOD/HRD untuk hari ini
+        const allIzinData = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+        const approvedIzinJam = allIzinData.find(iz => 
+          iz && iz.nik === nik && 
+          (iz.tanggal_mulai === isoTodayStr || iz.tanggal_mulai === todayStr) &&
+          (iz.status_persetujuan === 'Approved' || iz.status_persetujuan === 'Approved_HOD') &&
+          (iz.jenis || '').toString().toLowerCase().includes('jam')
+        );
+
+        if (approvedIzinJam) {
+          status = 'Dispensasi Izin';
+          lateMinutes = 0; // Bebas potongan denda keterlambatan!
+        }
       }
 
       if (existingIndex !== -1) {
@@ -1023,14 +1052,15 @@ function getKaryawanDashboard(nik, monthYear) {
       let shiftName = shiftVal;
       let shiftTime = '';
 
-      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I'].includes(shiftVal)) {
+      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
         const labelMap = {
           'OFF': 'OFF (Libur)',
           'CT': 'Cuti Tahunan (CT)',
           'PH': 'Publik Holiday (PH)',
           'EO': 'Extra Off (EO)',
           'S': 'Sakit (S)',
-          'I': 'Izin (I)'
+          'I': 'Izin (I)',
+          'CK': 'Cuti Khusus (CK)'
         };
         shiftName = labelMap[shiftVal] || shiftVal;
       } else {
@@ -1056,14 +1086,15 @@ function getKaryawanDashboard(nik, monthYear) {
     let shiftInfo = 'Standard / Default';
     if (userRoster) {
       const shiftVal = userRoster.id_shift || userRoster.status_hari;
-      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I'].includes(shiftVal)) {
+      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
         const labelMap = {
           'OFF': 'OFF (Libur)',
           'CT': 'Cuti Tahunan (CT)',
           'PH': 'Publik Holiday (PH)',
           'EO': 'Extra Off (EO)',
           'S': 'Sakit (S)',
-          'I': 'Izin (I)'
+          'I': 'Izin (I)',
+          'CK': 'Cuti Khusus (CK)'
         };
         shiftInfo = labelMap[shiftVal] || shiftVal;
       } else {
@@ -1124,10 +1155,14 @@ function getHODDashboard(nik, departemen) {
       };
     }).reverse();
 
+    const allTukar = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
+    const pendingTukarShiftHOD = allTukar.filter(t => t && t.departemen === departemen && t.status === 'Pending_HOD').reverse();
+
     return {
       success: true,
       deptEmployees: deptEmployees,
       pendingIzinHOD: pendingIzinHOD,
+      pendingTukarShiftHOD: pendingTukarShiftHOD,
       deptIzinHistory: deptIzinHistory
     };
   } catch (err) {
@@ -1751,6 +1786,7 @@ function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
 
     if (!emp) return { success: false, message: 'Data karyawan tidak ditemukan.' };
 
+    // Validasi kuota jika Cuti Tahunan (Cuti Khusus / Lainnya TIDAK memotong kuota)
     if (jenis === 'Cuti Tahunan') {
       const sisaCuti = parseInt(emp.sisa_cuti_tahunan || '0', 10);
       if (parseInt(jumlahHari, 10) > sisaCuti) {
@@ -1759,8 +1795,10 @@ function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
     }
 
     const empRoleLower = (emp.role || '').toString().toLowerCase();
+    const isIzinJam = (jenis || '').toString().toLowerCase().includes('jam');
+
     let initialStatus = 'Pending_HOD';
-    if (empRoleLower.includes('hod') || empRoleLower.includes('admin')) {
+    if (!isIzinJam && (empRoleLower.includes('hod') || empRoleLower.includes('admin'))) {
       initialStatus = 'Pending_HRD';
     }
 
@@ -1790,10 +1828,12 @@ function approveIzinCuti(idIzin, action, rejectionReason) {
     const item = izinData[index];
     const rowNum = index + 2;
     let newStatus = item.status_persetujuan;
+    const isIzinJam = (item.jenis || '').toString().toLowerCase().includes('jam');
 
     if (item.status_persetujuan === 'Pending_HOD' || item.status_persetujuan === 'Pending') {
       if (action === 'Approved') {
-        newStatus = 'Pending_HRD';
+        // POINT 1: Izin Jam-Jaman CUKUP HOD SAJA (Langsung Final Approved)!
+        newStatus = isIzinJam ? 'Approved' : 'Pending_HRD';
       } else if (action === 'Rejected') {
         newStatus = 'Rejected_HOD';
       }
@@ -1811,7 +1851,8 @@ function approveIzinCuti(idIzin, action, rejectionReason) {
     }
 
     if (newStatus === 'Approved') {
-      if (item.jenis === 'Cuti Tahunan' || item.jenis === 'Cuti') {
+      // Potong saldo HANYA jika Cuti Tahunan (Cuti Khusus / Lainnya TIDAK memotong cuti tahunan)
+      if (item.jenis === 'Cuti Tahunan') {
         const sheetEmp = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
         const empData = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
         const empIdx = empData.findIndex(e => e && e.nik === item.nik);
@@ -1823,39 +1864,221 @@ function approveIzinCuti(idIzin, action, rejectionReason) {
         }
       }
 
+      // POINT 2: Tentukan kode shift Roster
       let shiftCode = 'I';
+      const jLower = (item.jenis || '').toString().toLowerCase();
       if (item.jenis === 'Cuti Tahunan') shiftCode = 'CT';
       else if (item.jenis === 'Publik Holiday') shiftCode = 'PH';
       else if (item.jenis === 'Extra Off') shiftCode = 'EO';
       else if (item.jenis === 'Sakit') shiftCode = 'S';
       else if (item.jenis === 'Izin') shiftCode = 'I';
+      else if (jLower.includes('cuti khusus') || jLower.includes('lainnya')) shiftCode = 'CK'; // KODE CK UNTUK CUTI KHUSUS!
 
-      let startDate = parseDateStrToDate(item.tanggal_mulai);
-      let endDate = parseDateStrToDate(item.tanggal_selesai);
+      // Update Roster hanya jika BUKAN izin jam-jaman
+      if (!isIzinJam) {
+        let startDate = parseDateStrToDate(item.tanggal_mulai);
+        let endDate = parseDateStrToDate(item.tanggal_selesai);
 
-      if (startDate && endDate) {
-        const sheetRoster = ss.getSheetByName(CONFIG.SHEET_ROSTER);
-        const rosterData = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
+        if (startDate && endDate) {
+          const sheetRoster = ss.getSheetByName(CONFIG.SHEET_ROSTER);
+          const rosterData = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
 
-        let cur = new Date(startDate);
-        while (cur <= endDate) {
-          const isoDate = Utilities.formatDate(cur, 'Asia/Jakarta', 'yyyy-MM-dd');
-          
-          const rosterIdx = rosterData.findIndex(r => r && r.nik === item.nik && r.tanggal === isoDate);
-          if (rosterIdx !== -1) {
-            sheetRoster.getRange(rosterIdx + 2, 4).setValue(shiftCode);
-            sheetRoster.getRange(rosterIdx + 2, 5).setValue(shiftCode);
-          } else {
-            const newId = 'RST-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 100);
-            sheetRoster.appendRow([newId, item.nik, isoDate, shiftCode, shiftCode]);
+          let cur = new Date(startDate);
+          while (cur <= endDate) {
+            const isoDate = Utilities.formatDate(cur, 'Asia/Jakarta', 'yyyy-MM-dd');
+            
+            const rosterIdx = rosterData.findIndex(r => r && r.nik === item.nik && r.tanggal === isoDate);
+            if (rosterIdx !== -1) {
+              sheetRoster.getRange(rosterIdx + 2, 4).setValue(shiftCode);
+              sheetRoster.getRange(rosterIdx + 2, 5).setValue(shiftCode);
+            } else {
+              const newId = 'RST-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 100);
+              sheetRoster.appendRow([newId, item.nik, isoDate, shiftCode, shiftCode]);
+            }
+            cur.setDate(cur.getDate() + 1);
           }
-          cur.setDate(cur.getDate() + 1);
         }
       }
     }
 
     SpreadsheetApp.flush();
     return { success: true, message: 'Status pengajuan ' + item.jenis + ' berhasil diperbarui: ' + newStatus };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+/* ==========================================================================
+   TUKAR SHIFT (SHIFT SWAP) ENGINE - ANTAR REKAN 1 DEPARTEMEN (APPROVAL HOD)
+   ========================================================================== */
+
+function submitTukarShift(nikPengaju, tglPengaju, shiftPengaju, nikTujuan, tglTujuan, shiftTujuan, alasan) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const empPengaju = employees.find(e => e && e.nik === nikPengaju);
+    const empTujuan = employees.find(e => e && e.nik === nikTujuan);
+
+    if (!empPengaju || !empTujuan) {
+      return { success: false, message: 'Data karyawan tidak ditemukan.' };
+    }
+
+    if (empPengaju.departemen !== empTujuan.departemen) {
+      return { success: false, message: 'Tukar shift hanya dapat dilakukan antar rekan satu departemen (' + empPengaju.departemen + ').' };
+    }
+
+    if (nikPengaju === nikTujuan) {
+      return { success: false, message: 'Tidak dapat mengajukan tukar shift dengan diri sendiri.' };
+    }
+
+    const sheetTukar = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
+    const newId = 'TS-' + Date.now().toString().slice(-6);
+    const nowStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm');
+
+    sheetTukar.appendRow([
+      newId,
+      nikPengaju,
+      empPengaju.nama,
+      tglPengaju,
+      shiftPengaju,
+      nikTujuan,
+      empTujuan.nama,
+      tglTujuan,
+      shiftTujuan,
+      empPengaju.departemen,
+      alasan || '-',
+      'Pending_Rekan', // Menunggu persetujuan rekan yang diajak tukar
+      '',
+      nowStr
+    ]);
+
+    SpreadsheetApp.flush();
+    return { success: true, message: 'Pengajuan tukar shift berhasil dikirim ke ' + empTujuan.nama + ' untuk dikonfirmasi.' };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+function respondTukarShiftRekan(nikRekan, idTukar, action) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetTukar = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
+    const data = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
+    const index = data.findIndex(d => d && d.id_tukar === idTukar);
+
+    if (index === -1) return { success: false, message: 'Data tukar shift tidak ditemukan.' };
+    const item = data[index];
+
+    if (item.nik_tujuan !== nikRekan) {
+      return { success: false, message: 'Anda tidak memiliki hak untuk merespons pengajuan ini.' };
+    }
+
+    if (item.status !== 'Pending_Rekan') {
+      return { success: false, message: 'Pengajuan ini sudah berstatus: ' + item.status };
+    }
+
+    const rowNum = index + 2;
+    let newStatus = 'Rejected_Rekan';
+    if (action === 'Accept') {
+      newStatus = 'Pending_HOD';
+    }
+
+    sheetTukar.getRange(rowNum, 12).setValue(newStatus);
+    SpreadsheetApp.flush();
+
+    const msg = action === 'Accept'
+      ? 'Anda telah menyetujui pertukaran shift. Pengajuan kini diteruskan ke HOD untuk persetujuan akhir.'
+      : 'Anda telah menolak pengajuan pertukaran shift ini.';
+
+    return { success: true, message: msg };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetTukar = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
+    const data = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
+    const index = data.findIndex(d => d && d.id_tukar === idTukar);
+
+    if (index === -1) return { success: false, message: 'Data tukar shift tidak ditemukan.' };
+    const item = data[index];
+
+    if (item.status !== 'Pending_HOD') {
+      return { success: false, message: 'Pengajuan ini tidak sedang menunggu persetujuan HOD (Status: ' + item.status + ').' };
+    }
+
+    const rowNum = index + 2;
+    let newStatus = action === 'Approve' ? 'Approved' : 'Rejected_HOD';
+
+    sheetTukar.getRange(rowNum, 12).setValue(newStatus);
+    if (rejectionReason) {
+      sheetTukar.getRange(rowNum, 13).setValue(rejectionReason);
+    }
+
+    // POINT 3: Jika HOD APPROVE, OTOMATIS TUKAR SHIFT DI ROSTER!
+    if (newStatus === 'Approved') {
+      const sheetRoster = ss.getSheetByName(CONFIG.SHEET_ROSTER);
+      const rosterData = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
+
+      // 1. Update Roster Pengaju pada tanggal_pengaju menjadi shift_tujuan
+      const idxPengaju = rosterData.findIndex(r => r && r.nik === item.nik_pengaju && r.tanggal === item.tanggal_pengaju);
+      if (idxPengaju !== -1) {
+        sheetRoster.getRange(idxPengaju + 2, 4).setValue(item.shift_tujuan);
+        sheetRoster.getRange(idxPengaju + 2, 5).setValue(item.shift_tujuan);
+      } else {
+        const newId1 = 'RST-' + Date.now().toString().slice(-6);
+        sheetRoster.appendRow([newId1, item.nik_pengaju, item.tanggal_pengaju, item.shift_tujuan, item.shift_tujuan]);
+      }
+
+      // 2. Update Roster Tujuan pada tanggal_tujuan menjadi shift_pengaju
+      const idxTujuan = rosterData.findIndex(r => r && r.nik === item.nik_tujuan && r.tanggal === item.tanggal_tujuan);
+      if (idxTujuan !== -1) {
+        sheetRoster.getRange(idxTujuan + 2, 4).setValue(item.shift_pengaju);
+        sheetRoster.getRange(idxTujuan + 2, 5).setValue(item.shift_pengaju);
+      } else {
+        const newId2 = 'RST-' + (Date.now() + 1).toString().slice(-6);
+        sheetRoster.appendRow([newId2, item.nik_tujuan, item.tanggal_tujuan, item.shift_pengaju, item.shift_pengaju]);
+      }
+    }
+
+    SpreadsheetApp.flush();
+    const msg = newStatus === 'Approved'
+      ? 'Tukar shift berhasil disetujui HOD dan jadwal Roster kedua karyawan telah otomatis diperbarui!'
+      : 'Pengajuan tukar shift ditolak oleh HOD.';
+
+    return { success: true, message: msg };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+function getTukarShiftData(nik) {
+  try {
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const emp = employees.find(e => e && e.nik === nik);
+    if (!emp) return { success: false, message: 'Karyawan tidak ditemukan.' };
+
+    const dept = emp.departemen;
+    const colleagues = employees
+      .filter(e => e && e.departemen === dept && e.nik !== nik && e.status_akun === 'Approved' && e.status_kerja !== 'Resign')
+      .map(e => ({ nik: e.nik, nama: e.nama, jabatan: e.jabatan }));
+
+    const allTukar = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
+
+    const myRequests = allTukar.filter(t => t && t.nik_pengaju === nik).reverse();
+    const incomingRequests = allTukar.filter(t => t && t.nik_tujuan === nik && t.status === 'Pending_Rekan').reverse();
+    const incomingHistory = allTukar.filter(t => t && t.nik_tujuan === nik && t.status !== 'Pending_Rekan').reverse();
+
+    return {
+      success: true,
+      colleagues: colleagues,
+      myRequests: myRequests,
+      incomingRequests: incomingRequests,
+      incomingHistory: incomingHistory
+    };
   } catch (err) {
     return { success: false, message: err.toString() };
   }
