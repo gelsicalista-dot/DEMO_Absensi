@@ -8,6 +8,7 @@
 
     <!-- Base & PWA Mobile Settings -->
     <base target="_top">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e3a8a">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -424,6 +425,12 @@
                         class="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition">
                         Karyawan Baru? Daftar Akun Di Sini
                     </button>
+                    <div class="mt-3">
+                        <button type="button" onclick="showPWAInstallPromptManual()"
+                            class="text-[11px] font-bold text-slate-500 hover:text-indigo-600 transition inline-flex items-center gap-1.5 bg-slate-50 hover:bg-indigo-50 px-3.5 py-1.5 rounded-xl border border-slate-200 shadow-sm active:scale-95">
+                            <i class="fa-solid fa-mobile-screen-button text-indigo-500"></i> <span>Pasang Aplikasi di HP</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -5426,6 +5433,13 @@
            ========================================================================== */
         let deferredPWAInstallPrompt = null;
 
+        // Tangkap event 'beforeinstallprompt' secepat mungkin di level window
+        window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault();
+            deferredPWAInstallPrompt = e;
+            console.log('PWA: beforeinstallprompt berhasil ditangkap!');
+        });
+
         function isRunningStandalone() {
             return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || 
                    (window.navigator && window.navigator.standalone === true);
@@ -5437,38 +5451,39 @@
                    !window.MSStream;
         }
 
-        function initPWAInstallEngine() {
-            // Jangan pernah tampilkan jika aplikasi sudah terinstal / dibuka dari home screen
-            if (isRunningStandalone()) return;
-
-            // Cek apakah baru saja ditutup oleh user dalam 24 jam terakhir
-            const dismissedAt = safeStorage.getItem('balcone_pwa_dismissed_time');
-            if (dismissedAt) {
-                const diffHours = (Date.now() - parseInt(dismissedAt, 10)) / (1000 * 60 * 60);
-                if (diffHours < 24) return;
-            }
-
-            // 1. Android & Chromium Desktop: Tangkap event 'beforeinstallprompt'
-            window.addEventListener('beforeinstallprompt', function (e) {
-                e.preventDefault();
-                deferredPWAInstallPrompt = e;
-                setTimeout(function () {
-                    if (!isRunningStandalone()) {
-                        const modal = document.getElementById('modal-pwa-install-android');
-                        if (modal) modal.classList.remove('hidden');
-                    }
-                }, 1500);
-            });
-
-            // 2. iOS Safari: Tampilkan panduan mengambang
+        function showPWAInstallPromptManual() {
             if (isIOSDevice()) {
-                setTimeout(function () {
-                    if (!isRunningStandalone()) {
-                        const banner = document.getElementById('banner-pwa-install-ios');
-                        if (banner) banner.classList.remove('hidden');
-                    }
-                }, 2000);
+                const banner = document.getElementById('banner-pwa-install-ios');
+                if (banner) banner.classList.remove('hidden');
+            } else {
+                const modal = document.getElementById('modal-pwa-install-android');
+                if (modal) modal.classList.remove('hidden');
             }
+        }
+
+        function initPWAInstallEngine() {
+            // Jika sudah berjalan di dalam aplikasi PWA (layar penuh), jangan tampilkan banner
+            if (isRunningStandalone()) {
+                console.log('PWA: Aplikasi sedang berjalan dalam mode Standalone.');
+                return;
+            }
+
+            // Tampilkan pop-up / banner otomatis setelah jeda singkat (1.2 detik)
+            setTimeout(function () {
+                if (isRunningStandalone()) return;
+
+                // Cek apakah user baru saja menolak dalam sesi ini
+                const dismissed = safeStorage.getItem('balcone_pwa_dismissed_session');
+                if (dismissed === 'true') return;
+
+                if (isIOSDevice()) {
+                    const banner = document.getElementById('banner-pwa-install-ios');
+                    if (banner) banner.classList.remove('hidden');
+                } else {
+                    const modal = document.getElementById('modal-pwa-install-android');
+                    if (modal) modal.classList.remove('hidden');
+                }
+            }, 1200);
         }
 
         function triggerInstallApp() {
@@ -5478,9 +5493,13 @@
                     console.log('User PWA Choice:', result ? result.outcome : 'unknown');
                     deferredPWAInstallPrompt = null;
                     closePWAInstallModal(false);
+                }).catch(function (err) {
+                    console.warn('Install prompt error:', err);
+                    closePWAInstallModal(false);
                 });
             } else {
-                showToast('Ketuk menu titik tiga browser (⋮) ➔ Tambahkan ke Layar Utama', 'info');
+                // Jika browser belum memicu prompt native (misal di PC / browser tertentu)
+                showToast('Ketuk menu titik tiga browser (⋮) ➔ Tambahkan ke Layar Utama / Instal', 'info');
                 closePWAInstallModal(false);
             }
         }
@@ -5489,7 +5508,7 @@
             const modal = document.getElementById('modal-pwa-install-android');
             if (modal) modal.classList.add('hidden');
             if (rememberDismiss) {
-                safeStorage.setItem('balcone_pwa_dismissed_time', Date.now());
+                safeStorage.setItem('balcone_pwa_dismissed_session', 'true');
             }
         }
 
@@ -5497,7 +5516,7 @@
             const banner = document.getElementById('banner-pwa-install-ios');
             if (banner) banner.classList.add('hidden');
             if (rememberDismiss) {
-                safeStorage.setItem('balcone_pwa_dismissed_time', Date.now());
+                safeStorage.setItem('balcone_pwa_dismissed_session', 'true');
             }
         }
 
