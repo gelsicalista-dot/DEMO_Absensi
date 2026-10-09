@@ -1,0 +1,25 @@
+{
+  "name": "The Balcone Suites & Resort - HR & Attendance",
+  "short_name": "Balcone HR",
+  "description": "Sistem Presensi, Roster, Payroll & HR The Balcone Suites & Resort",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=192&h=192&fit=crop&crop=faces",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=512&h=512&fit=crop&crop=faces",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
