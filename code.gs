@@ -1042,13 +1042,15 @@ function getKaryawanDashboard(nik, monthYear) {
     const cutOff = getCutoffRange(currentMonthStr);
     const holidaysMap = getIndonesianHolidaysMap(cutOff.startDate, cutOff.endDate);
 
-    const personalRoster = rosterList.filter(r => {
-      if (r.nik !== nik || !r.tanggal) return false;
-      return r.tanggal >= cutOff.startIsoStr && r.tanggal <= cutOff.endIsoStr;
-    }).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+    const personalRosterWithDetails = [];
+    let curDate = new Date(cutOff.startDate);
+    const endDate = new Date(cutOff.endDate);
 
-    const personalRosterWithDetails = personalRoster.map(r => {
-      const shiftVal = r.id_shift || r.status_hari;
+    while (curDate <= endDate) {
+      const isoDate = Utilities.formatDate(curDate, 'Asia/Jakarta', 'yyyy-MM-dd');
+      const matched = rosterList.find(r => r && String(r.nik).trim() === String(nik).trim() && r.tanggal === isoDate);
+      
+      const shiftVal = matched ? (matched.id_shift || matched.status_hari) : 'OFF';
       let shiftName = shiftVal;
       let shiftTime = '';
 
@@ -1064,9 +1066,9 @@ function getKaryawanDashboard(nik, monthYear) {
         };
         shiftName = labelMap[shiftVal] || shiftVal;
       } else {
-        const matchedShift = shifts.find(s => s.id_shift === r.id_shift);
+        const matchedShift = shifts.find(s => s.id_shift === shiftVal);
         if (matchedShift) {
-          shiftName = matchedShift.nama_shift || r.id_shift;
+          shiftName = matchedShift.nama_shift || shiftVal;
           if (matchedShift.jam_masuk && matchedShift.jam_pulang) {
             shiftTime = matchedShift.jam_masuk + ' - ' + matchedShift.jam_pulang;
           } else if (matchedShift.jam_masuk) {
@@ -1077,19 +1079,21 @@ function getKaryawanDashboard(nik, monthYear) {
         }
       }
 
-      return {
-        id_roster: r.id_roster,
-        tanggal: r.tanggal,
-        id_shift: r.id_shift,
-        status_hari: r.status_hari,
+      personalRosterWithDetails.push({
+        id_roster: matched ? matched.id_roster : ('OFF-' + isoDate),
+        tanggal: isoDate,
+        id_shift: shiftVal,
+        status_hari: matched ? (matched.status_hari || shiftVal) : 'OFF',
         shift_nama: shiftName,
         shift_jam: shiftTime
-      };
-    });
+      });
 
-    const userRoster = rosterList.find(r => r.nik === nik && (r.tanggal === isoTodayStr || r.tanggal === todayStr));
+      curDate.setDate(curDate.getDate() + 1);
+    }
+
+    const userRoster = rosterList.find(r => r && String(r.nik).trim() === String(nik).trim() && (r.tanggal === isoTodayStr || r.tanggal === todayStr));
     
-    let shiftInfo = 'Standard / Default';
+    let shiftInfo = 'OFF (Libur)';
     if (userRoster) {
       const shiftVal = userRoster.id_shift || userRoster.status_hari;
       if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
@@ -2010,15 +2014,13 @@ function respondTukarShiftRekan(nikRekan, idTukar, action) {
     }
 
     const rowNum = index + 2;
-    let newStatus = 'Rejected_Rekan';
-    if (action === 'Accept') {
-      newStatus = 'Pending_HOD';
-    }
+    const isAccept = (action === 'Accept' || action === 'Accepted');
+    let newStatus = isAccept ? 'Pending_HOD' : 'Rejected_Rekan';
 
     sheetTukar.getRange(rowNum, 12).setValue(newStatus);
     SpreadsheetApp.flush();
 
-    const msg = action === 'Accept'
+    const msg = isAccept
       ? 'Anda telah menyetujui pertukaran shift. Pengajuan kini diteruskan ke HOD untuk persetujuan akhir.'
       : 'Anda telah menolak pengajuan pertukaran shift ini.';
 
@@ -2043,7 +2045,8 @@ function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
     }
 
     const rowNum = index + 2;
-    let newStatus = action === 'Approve' ? 'Approved' : 'Rejected_HOD';
+    const isApprove = (action === 'Approve' || action === 'Approved');
+    let newStatus = isApprove ? 'Approved' : 'Rejected_HOD';
 
     sheetTukar.getRange(rowNum, 12).setValue(newStatus);
     if (rejectionReason) {
@@ -2055,17 +2058,17 @@ function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
       const sheetRoster = ss.getSheetByName(CONFIG.SHEET_ROSTER);
       const rosterData = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
 
-      const rPengaju = rosterData.find(r => r && r.nik === item.nik_pengaju && r.tanggal === item.tanggal_pengaju);
-      const rTujuan = rosterData.find(r => r && r.nik === item.nik_tujuan && r.tanggal === item.tanggal_tujuan);
+      const rPengaju = rosterData.find(r => r && String(r.nik).trim() === String(item.nik_pengaju).trim() && r.tanggal === item.tanggal_pengaju);
+      const rTujuan = rosterData.find(r => r && String(r.nik).trim() === String(item.nik_tujuan).trim() && r.tanggal === item.tanggal_tujuan);
 
-      const shiftPengajuId = rPengaju ? (rPengaju.id_shift || rPengaju.status_hari) : item.shift_pengaju;
-      const shiftPengajuStatus = rPengaju ? (rPengaju.status_hari || rPengaju.id_shift) : item.shift_pengaju;
+      const shiftPengajuId = rPengaju ? (rPengaju.id_shift || rPengaju.status_hari) : (item.shift_pengaju || 'OFF');
+      const shiftPengajuStatus = rPengaju ? (rPengaju.status_hari || rPengaju.id_shift) : (item.shift_pengaju || 'OFF');
 
-      const shiftTujuanId = rTujuan ? (rTujuan.id_shift || rTujuan.status_hari) : item.shift_tujuan;
-      const shiftTujuanStatus = rTujuan ? (rTujuan.status_hari || rTujuan.id_shift) : item.shift_tujuan;
+      const shiftTujuanId = rTujuan ? (rTujuan.id_shift || rTujuan.status_hari) : (item.shift_tujuan || 'OFF');
+      const shiftTujuanStatus = rTujuan ? (rTujuan.status_hari || rTujuan.id_shift) : (item.shift_tujuan || 'OFF');
 
       // 1. Update Roster Pengaju pada tanggal_pengaju menjadi shift_tujuan
-      const idxPengaju = rosterData.findIndex(r => r && r.nik === item.nik_pengaju && r.tanggal === item.tanggal_pengaju);
+      const idxPengaju = rosterData.findIndex(r => r && String(r.nik).trim() === String(item.nik_pengaju).trim() && r.tanggal === item.tanggal_pengaju);
       if (idxPengaju !== -1) {
         sheetRoster.getRange(idxPengaju + 2, 4).setValue(shiftTujuanId);
         sheetRoster.getRange(idxPengaju + 2, 5).setValue(shiftTujuanStatus);
@@ -2075,7 +2078,7 @@ function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
       }
 
       // 2. Update Roster Tujuan pada tanggal_tujuan menjadi shift_pengaju
-      const idxTujuan = rosterData.findIndex(r => r && r.nik === item.nik_tujuan && r.tanggal === item.tanggal_tujuan);
+      const idxTujuan = rosterData.findIndex(r => r && String(r.nik).trim() === String(item.nik_tujuan).trim() && r.tanggal === item.tanggal_tujuan);
       if (idxTujuan !== -1) {
         sheetRoster.getRange(idxTujuan + 2, 4).setValue(shiftPengajuId);
         sheetRoster.getRange(idxTujuan + 2, 5).setValue(shiftPengajuStatus);
@@ -2086,7 +2089,7 @@ function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
     }
 
     SpreadsheetApp.flush();
-    const msg = newStatus === 'Approved'
+    const msg = isApprove
       ? 'Tukar shift berhasil disetujui HOD dan jadwal Roster kedua karyawan telah otomatis diperbarui!'
       : 'Pengajuan tukar shift ditolak oleh HOD.';
 
