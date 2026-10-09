@@ -378,6 +378,41 @@
 
 <body class="min-h-screen">
 
+    <!-- FULLSCREEN SPLASH SCREEN (Opsi B: Brand Protector & Smooth Session Restoration) -->
+    <div id="app-splash-screen" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950 text-white transition-opacity duration-300">
+        <div class="flex flex-col items-center text-center p-6 max-w-xs">
+            <!-- Balcone Logo with Glow Ring -->
+            <div class="relative mb-5">
+                <div class="absolute -inset-2 bg-gradient-to-tr from-indigo-500 via-indigo-600 to-emerald-400 rounded-3xl blur-lg opacity-60 animate-pulse"></div>
+                <div class="relative w-24 h-24 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl flex items-center justify-center shadow-2xl p-2.5 overflow-hidden">
+                    <img src="icon-192.png" alt="The Balcone" class="w-full h-full object-contain rounded-xl drop-shadow-md">
+                </div>
+            </div>
+            
+            <h1 class="text-2xl font-black tracking-tight text-white">THE BALCONE</h1>
+            <p class="text-xs font-bold tracking-widest text-emerald-400 uppercase mt-0.5">SUITES & RESORT</p>
+            <p class="text-xs text-slate-400 mt-2 font-medium">HR, Roster & Payroll System</p>
+            
+            <!-- Animated Spinner & Status -->
+            <div class="mt-8 flex flex-col items-center gap-2.5">
+                <div class="w-8 h-8 border-4 border-indigo-500/20 border-t-emerald-400 rounded-full animate-spin"></div>
+                <p id="splash-status-text" class="text-xs text-slate-300 font-semibold tracking-wide">Memulihkan sesi masuk...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Deteksi Awal Instan (0ms):
+        // Jika belum ada sesi login tersimpan, langsung sembunyikan splash screen seketika
+        try {
+            var _rawSess = localStorage.getItem('balcone_auth_session');
+            if (!_rawSess) {
+                var _sp = document.getElementById('app-splash-screen');
+                if (_sp) { _sp.style.display = 'none'; _sp.classList.add('hidden'); }
+            }
+        } catch (e) {}
+    </script>
+
     <div id="app" class="p-3 sm:p-6 max-w-7xl mx-auto">
 
         <!-- 1. LOGIN VIEW -->
@@ -2857,12 +2892,33 @@
             safeStorage.removeItem('balcone_auth_session');
         }
 
+        function hideSplashScreen() {
+            const splash = document.getElementById('app-splash-screen');
+            if (!splash) return;
+            splash.style.opacity = '0';
+            splash.style.pointerEvents = 'none';
+            setTimeout(function () {
+                splash.classList.add('hidden');
+                splash.style.display = 'none';
+            }, 320);
+        }
+
         function checkAutoLogin() {
             try {
                 const raw = safeStorage.getItem('balcone_auth_session');
-                if (!raw) return;
+                if (!raw) {
+                    hideSplashScreen();
+                    return;
+                }
                 const session = JSON.parse(raw);
-                if (!session || !session.phone || !session.pass) return;
+                if (!session || !session.phone || !session.pass) {
+                    hideSplashScreen();
+                    return;
+                }
+
+                // Sembunyikan form login agar pengguna hanya melihat Splash Screen elegan
+                const loginView = document.getElementById('view-login');
+                if (loginView) loginView.classList.add('hidden');
 
                 const deviceId = getOrCreateDeviceId();
                 const btn = document.getElementById('btn-login');
@@ -2902,9 +2958,11 @@
                             loadKaryawanDashboard();
                         }
                         startAutoPolling();
+                        hideSplashScreen();
                         showToast('Selamat datang kembali, ' + currentUser.nama + '!', 'info');
                     } else {
                         clearAuthSession();
+                        hideSplashScreen();
                         document.getElementById('view-login').classList.remove('hidden');
                         if (res && res.message) showToast(res.message, 'error');
                     }
@@ -2913,10 +2971,12 @@
                         btn.disabled = false;
                         btn.innerHTML = '<span>Masuk Sistem</span> <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>';
                     }
+                    hideSplashScreen();
                     document.getElementById('view-login').classList.remove('hidden');
                 });
             } catch (e) {
                 console.warn('Auto-login error:', e);
+                hideSplashScreen();
                 const vl = document.getElementById('view-login');
                 if (vl) vl.classList.remove('hidden');
             }
