@@ -1165,6 +1165,8 @@ function getHODDashboard(nik, departemen) {
       };
     }).reverse();
 
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    getOrCreateTukarShiftSheet(ss);
     const allTukar = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
     const pendingTukarShiftHOD = allTukar.filter(t => t && t.departemen === departemen && t.status === 'Pending_HOD').reverse();
 
@@ -1922,12 +1924,33 @@ function approveIzinCuti(idIzin, action, rejectionReason) {
    TUKAR SHIFT (SHIFT SWAP) ENGINE - ANTAR REKAN 1 DEPARTEMEN (APPROVAL HOD)
    ========================================================================== */
 
+function getOrCreateTukarShiftSheet(ss) {
+  let sheet = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_TUKAR_SHIFT);
+    const expectedHeaders = [
+      'id_tukar', 'nik_pengaju', 'nama_pengaju', 'tanggal_pengaju', 'shift_pengaju',
+      'nik_tujuan', 'nama_tujuan', 'tanggal_tujuan', 'shift_tujuan', 'departemen',
+      'alasan', 'status', 'catatan_hod', 'created_at'
+    ];
+    sheet.appendRow(expectedHeaders);
+    sheet.getRange(1, 1, 1, expectedHeaders.length)
+         .setFontWeight('bold')
+         .setBackground('#1E3A8A')
+         .setFontColor('#FFFFFF');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
 function submitTukarShift(nikPengaju, tglPengaju, shiftPengaju, nikTujuan, tglTujuan, shiftTujuan, alasan) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetTukar = getOrCreateTukarShiftSheet(ss);
+
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
-    const empPengaju = employees.find(e => e && e.nik === nikPengaju);
-    const empTujuan = employees.find(e => e && e.nik === nikTujuan);
+    const empPengaju = employees.find(e => e && String(e.nik).trim() === String(nikPengaju).trim());
+    const empTujuan = employees.find(e => e && String(e.nik).trim() === String(nikTujuan).trim());
 
     if (!empPengaju || !empTujuan) {
       return { success: false, message: 'Data karyawan tidak ditemukan.' };
@@ -1937,11 +1960,10 @@ function submitTukarShift(nikPengaju, tglPengaju, shiftPengaju, nikTujuan, tglTu
       return { success: false, message: 'Tukar shift hanya dapat dilakukan antar rekan satu departemen (' + empPengaju.departemen + ').' };
     }
 
-    if (nikPengaju === nikTujuan) {
+    if (String(nikPengaju).trim() === String(nikTujuan).trim()) {
       return { success: false, message: 'Tidak dapat mengajukan tukar shift dengan diri sendiri.' };
     }
 
-    const sheetTukar = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
     const newId = 'TS-' + Date.now().toString().slice(-6);
     const nowStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HH:mm');
 
@@ -1972,14 +1994,14 @@ function submitTukarShift(nikPengaju, tglPengaju, shiftPengaju, nikTujuan, tglTu
 function respondTukarShiftRekan(nikRekan, idTukar, action) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheetTukar = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
+    const sheetTukar = getOrCreateTukarShiftSheet(ss);
     const data = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
     const index = data.findIndex(d => d && d.id_tukar === idTukar);
 
     if (index === -1) return { success: false, message: 'Data tukar shift tidak ditemukan.' };
     const item = data[index];
 
-    if (item.nik_tujuan !== nikRekan) {
+    if (String(item.nik_tujuan).trim() !== String(nikRekan).trim()) {
       return { success: false, message: 'Anda tidak memiliki hak untuk merespons pengajuan ini.' };
     }
 
@@ -2009,7 +2031,7 @@ function respondTukarShiftRekan(nikRekan, idTukar, action) {
 function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheetTukar = ss.getSheetByName(CONFIG.SHEET_TUKAR_SHIFT);
+    const sheetTukar = getOrCreateTukarShiftSheet(ss);
     const data = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
     const index = data.findIndex(d => d && d.id_tukar === idTukar);
 
@@ -2076,8 +2098,11 @@ function approveTukarShiftHOD(hodNik, idTukar, action, rejectionReason) {
 
 function getTukarShiftData(nik) {
   try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    getOrCreateTukarShiftSheet(ss);
+
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
-    const emp = employees.find(e => e && e.nik === nik);
+    const emp = employees.find(e => e && String(e.nik).trim() === String(nik).trim());
     if (!emp) return { success: false, message: 'Karyawan tidak ditemukan.' };
 
     const dept = emp.departemen;
