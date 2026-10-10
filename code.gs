@@ -2643,7 +2643,16 @@ function generateAttendancePDFReport(searchKey, filterDept, startDate, endDate) 
     htmlContent += '<p style="text-align:right; font-size:9px; color:#94a3b8; margin-top:20px;">Dicetak otomatis oleh Sistem HR The Balcone Suites & Resort pada ' + (new Date().toLocaleString('id-ID')) + '</p>';
     htmlContent += '</div>';
 
-    const safeFileTitle = 'Laporan_Absensi_Balcone_' + (filterDateMonth || 'All').replace(/[^a-zA-Z0-9]/g, '_');
+    let periodSuffix = 'Semua';
+    if (startDate && startDate.trim() !== '' && endDate && endDate.trim() !== '') {
+      periodSuffix = startDate.trim() + '_sd_' + endDate.trim();
+    } else if (startDate && startDate.trim() !== '') {
+      periodSuffix = 'Mulai_' + startDate.trim();
+    } else if (endDate && endDate.trim() !== '') {
+      periodSuffix = 'Hingga_' + endDate.trim();
+    }
+    const safeDeptStr = (filterDept && filterDept !== 'ALL') ? filterDept + '_' : '';
+    const safeFileTitle = ('Laporan_Absensi_Balcone_' + safeDeptStr + periodSuffix).replace(/[^a-zA-Z0-9]/g, '_');
     const blob = Utilities.newBlob(htmlContent, 'text/html', safeFileTitle + '.html');
     const pdfBlob = blob.getAs('application/pdf');
     const base64Pdf = Utilities.base64Encode(pdfBlob.getBytes());
