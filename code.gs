@@ -89,13 +89,13 @@ function doPost(e) {
     } else if (action === 'calculateMonthlyKPI') {
       result = calculateMonthlyKPI(payload[0]);
     } else if (action === 'getGlobalAttendanceList') {
-      result = getGlobalAttendanceList(payload[0], payload[1], payload[2], payload[3], payload[4]);
+      result = getGlobalAttendanceList(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
     } else if (action === 'generateAttendancePDFReport') {
-      result = generateAttendancePDFReport(payload[0], payload[1], payload[2]);
+      result = generateAttendancePDFReport(payload[0], payload[1], payload[2], payload[3]);
     } else if (action === 'getHODAttendanceList') {
-      result = getHODAttendanceList(payload[0], payload[1], payload[2], payload[3], payload[4]);
+      result = getHODAttendanceList(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
     } else if (action === 'generateHODAttendancePDFReport') {
-      result = generateHODAttendancePDFReport(payload[0], payload[1], payload[2]);
+      result = generateHODAttendancePDFReport(payload[0], payload[1], payload[2], payload[3]);
     } else if (action === 'savePengumuman') {
       result = savePengumuman(payload[0], payload[1], payload[2], payload[3], payload[4]);
     } else if (action === 'deletePengumuman') {
@@ -2413,8 +2413,100 @@ function matchesDateOrMonth(targetDateStr, filterStr) {
   return false;
 }
 
-function getGlobalAttendanceList(searchKey, filterDept, filterDateMonth, page, limit) {
+function normalizeDateToYMD(dateVal) {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) {
+    const y = dateVal.getFullYear();
+    const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+    const d = String(dateVal.getDate()).padStart(2, '0');
+    return parseInt(y + m + d, 10);
+  }
+  const str = dateVal.toString().trim();
+  if (!str) return null;
+
+  // Format YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = isoMatch[2].padStart(2, '0');
+    const d = isoMatch[3].padStart(2, '0');
+    return parseInt(y + m + d, 10);
+  }
+
+  // Format DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return parseInt(y + m + d, 10);
+  }
+
+  // Fallback parseDateStrToDate
+  const parsed = parseDateStrToDate(str);
+  if (parsed && !isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return parseInt(y + m + d, 10);
+  }
+
+  return null;
+}
+
+function isDateInRange(targetDateStr, startDateStr, endDateStr) {
+  if (!targetDateStr) return false;
+  if (!startDateStr && !endDateStr) return true;
+
+  const targetYMD = normalizeDateToYMD(targetDateStr);
+  if (!targetYMD) {
+    if (startDateStr && matchesDateOrMonth(targetDateStr, startDateStr)) return true;
+    if (endDateStr && matchesDateOrMonth(targetDateStr, endDateStr)) return true;
+    return false;
+  }
+
+  let startYMD = startDateStr ? normalizeDateToYMD(startDateStr) : null;
+  let endYMD = endDateStr ? normalizeDateToYMD(endDateStr) : null;
+
+  // Smart Auto-swap jika tanggal mulai > tanggal selesai
+  if (startYMD && endYMD && startYMD > endYMD) {
+    const temp = startYMD;
+    startYMD = endYMD;
+    endYMD = temp;
+  }
+
+  if (startYMD && targetYMD < startYMD) return false;
+  if (endYMD && targetYMD > endYMD) return false;
+
+  return true;
+}
+
+function formatDisplayDateID(dateVal) {
+  if (!dateVal) return '';
+  const ymd = normalizeDateToYMD(dateVal);
+  if (!ymd) return String(dateVal);
+  const s = String(ymd);
+  return s.substring(6, 8) + '/' + s.substring(4, 6) + '/' + s.substring(0, 4);
+}
+
+function getGlobalAttendanceList(searchKey, filterDept, startDateOrDateMonth, endDateOrPage, pageOrLimit, limit) {
   try {
+    let startDate = startDateOrDateMonth || '';
+    let endDate = '';
+    let page = 1;
+    let limitNum = 15;
+
+    // Cek fleksibilitas signature lama (5 arg) vs baru (6 arg)
+    if (typeof endDateOrPage === 'number' || (endDateOrPage !== undefined && endDateOrPage !== null && !isNaN(endDateOrPage) && String(endDateOrPage).trim() !== '' && !String(endDateOrPage).includes('-') && !String(endDateOrPage).includes('/'))) {
+      endDate = '';
+      page = parseInt(endDateOrPage) || 1;
+      limitNum = parseInt(pageOrLimit) || 15;
+    } else {
+      endDate = endDateOrPage || '';
+      page = parseInt(pageOrLimit) || 1;
+      limitNum = parseInt(limit) || 15;
+    }
+
     let data = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
     
@@ -2440,14 +2532,13 @@ function getGlobalAttendanceList(searchKey, filterDept, filterDateMonth, page, l
       data = data.filter(d => d.departemen === filterDept);
     }
 
-    if (filterDateMonth && filterDateMonth.trim() !== '') {
-      const dm = filterDateMonth.trim();
-      data = data.filter(d => d.tanggal && matchesDateOrMonth(d.tanggal, dm));
+    if ((startDate && startDate.trim() !== '') || (endDate && endDate.trim() !== '')) {
+      data = data.filter(d => d.tanggal && isDateInRange(d.tanggal, startDate, endDate));
     }
 
     const totalRecords = data.length;
     const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 15;
+    limitNum = parseInt(limitNum) || 15;
     const startIndex = (pageNum - 1) * limitNum;
     const paginatedData = data.slice(startIndex, startIndex + limitNum);
 
@@ -2463,7 +2554,7 @@ function getGlobalAttendanceList(searchKey, filterDept, filterDateMonth, page, l
   }
 }
 
-function generateAttendancePDFReport(searchKey, filterDept, filterDateMonth) {
+function generateAttendancePDFReport(searchKey, filterDept, startDate, endDate) {
   try {
     let data = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
@@ -2490,16 +2581,24 @@ function generateAttendancePDFReport(searchKey, filterDept, filterDateMonth) {
       data = data.filter(d => d.departemen === filterDept);
     }
 
-    if (filterDateMonth && filterDateMonth.trim() !== '') {
-      const dm = filterDateMonth.trim();
-      data = data.filter(d => d.tanggal && matchesDateOrMonth(d.tanggal, dm));
+    if ((startDate && startDate.trim() !== '') || (endDate && endDate.trim() !== '')) {
+      data = data.filter(d => d.tanggal && isDateInRange(d.tanggal, startDate, endDate));
     }
 
     let filterInfo = [];
     if (filterDept && filterDept !== 'ALL') filterInfo.push('Departemen: ' + filterDept);
     else filterInfo.push('Departemen: Semua');
-    if (filterDateMonth && filterDateMonth.trim() !== '') filterInfo.push('Periode/Tgl: ' + filterDateMonth);
-    else filterInfo.push('Periode: Semua Tanggal');
+
+    if (startDate && startDate.trim() !== '' && endDate && endDate.trim() !== '') {
+      filterInfo.push('Periode: ' + formatDisplayDateID(startDate) + ' s/d ' + formatDisplayDateID(endDate));
+    } else if (startDate && startDate.trim() !== '') {
+      filterInfo.push('Periode: Mulai ' + formatDisplayDateID(startDate));
+    } else if (endDate && endDate.trim() !== '') {
+      filterInfo.push('Periode: Hingga ' + formatDisplayDateID(endDate));
+    } else {
+      filterInfo.push('Periode: Semua Tanggal');
+    }
+
     if (searchKey && searchKey.trim() !== '') filterInfo.push('Pencarian: "' + searchKey + '"');
 
     let htmlContent = '<div style="font-family:Arial, sans-serif; padding:15px; color:#1e293b;">';
@@ -2559,8 +2658,24 @@ function generateAttendancePDFReport(searchKey, filterDept, filterDateMonth) {
   }
 }
 
-function getHODAttendanceList(hodNik, searchKey, filterDateMonth, page, limit) {
+function getHODAttendanceList(hodNik, searchKey, startDateOrDateMonth, endDateOrPage, pageOrLimit, limit) {
   try {
+    let startDate = startDateOrDateMonth || '';
+    let endDate = '';
+    let page = 1;
+    let limitNum = 15;
+
+    // Cek kompatibilitas signature lama vs baru
+    if (typeof endDateOrPage === 'number' || (endDateOrPage !== undefined && endDateOrPage !== null && !isNaN(endDateOrPage) && String(endDateOrPage).trim() !== '' && !String(endDateOrPage).includes('-') && !String(endDateOrPage).includes('/'))) {
+      endDate = '';
+      page = parseInt(endDateOrPage) || 1;
+      limitNum = parseInt(pageOrLimit) || 15;
+    } else {
+      endDate = endDateOrPage || '';
+      page = parseInt(pageOrLimit) || 1;
+      limitNum = parseInt(limit) || 15;
+    }
+
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
     const hod = employees.find(e => e && e.nik === hodNik);
     if (!hod) return { success: false, message: 'Data HOD tidak ditemukan.' };
@@ -2588,14 +2703,13 @@ function getHODAttendanceList(hodNik, searchKey, filterDateMonth, page, limit) {
       );
     }
 
-    if (filterDateMonth && filterDateMonth.trim() !== '') {
-      const dm = filterDateMonth.trim();
-      data = data.filter(d => d.tanggal && matchesDateOrMonth(d.tanggal, dm));
+    if ((startDate && startDate.trim() !== '') || (endDate && endDate.trim() !== '')) {
+      data = data.filter(d => d.tanggal && isDateInRange(d.tanggal, startDate, endDate));
     }
 
     const totalRecords = data.length;
     const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 15;
+    limitNum = parseInt(limitNum) || 15;
     const startIndex = (pageNum - 1) * limitNum;
     const paginatedData = data.slice(startIndex, startIndex + limitNum);
 
@@ -2612,12 +2726,12 @@ function getHODAttendanceList(hodNik, searchKey, filterDateMonth, page, limit) {
   }
 }
 
-function generateHODAttendancePDFReport(hodNik, searchKey, filterDateMonth) {
+function generateHODAttendancePDFReport(hodNik, searchKey, startDate, endDate) {
   try {
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
     const hod = employees.find(e => e && e.nik === hodNik);
     if (!hod) return { success: false, message: 'Data HOD tidak ditemukan.' };
-    return generateAttendancePDFReport(searchKey, hod.departemen, filterDateMonth);
+    return generateAttendancePDFReport(searchKey, hod.departemen, startDate, endDate);
   } catch (err) {
     return { success: false, message: err.toString() };
   }
