@@ -913,28 +913,34 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
       let lateMinutes = 0;
       let status = 'Tepat Waktu';
       
-      const [scheduleHour, scheduleMin] = activeShift.jam_masuk.split(':').map(Number);
-      const now = new Date();
-      const scheduleTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), scheduleHour, scheduleMin, 0);
-      const toleranceMs = parseInt(activeShift.toleransi_terlambat_menit || '15', 10) * 60 * 1000;
-      
-      if (now.getTime() > scheduleTime.getTime() + toleranceMs) {
-        lateMinutes = Math.round((now.getTime() - scheduleTime.getTime()) / 60000);
-        status = 'Terlambat';
+      if (activeShift && activeShift.jam_masuk && activeShift.jam_masuk.includes(':')) {
+        const [scheduleHour, scheduleMin] = activeShift.jam_masuk.split(':').map(Number);
+        const now = new Date();
+        const scheduleTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), scheduleHour, scheduleMin, 0);
+        const toleranceMs = parseInt(activeShift.toleransi_terlambat_menit || '15', 10) * 60 * 1000;
+        
+        if (now.getTime() > scheduleTime.getTime() + toleranceMs) {
+          lateMinutes = Math.round((now.getTime() - scheduleTime.getTime()) / 60000);
+          status = 'Terlambat';
 
-        // Cek dispensasi jika ada izin jam-jaman yang disetujui HOD/HRD untuk hari ini
-        const allIzinData = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
-        const approvedIzinJam = allIzinData.find(iz => 
-          iz && iz.nik === nik && 
-          (iz.tanggal_mulai === isoTodayStr || iz.tanggal_mulai === todayStr) &&
-          (iz.status_persetujuan === 'Approved' || iz.status_persetujuan === 'Approved_HOD') &&
-          (iz.jenis || '').toString().toLowerCase().includes('jam')
-        );
+          // Cek dispensasi jika ada izin jam-jaman yang disetujui HOD/HRD untuk hari ini
+          const allIzinData = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+          const approvedIzinJam = allIzinData.find(iz => 
+            iz && iz.nik === nik && 
+            (iz.tanggal_mulai === isoTodayStr || iz.tanggal_mulai === todayStr) &&
+            (iz.status_persetujuan === 'Approved' || iz.status_persetujuan === 'Approved_HOD') &&
+            (iz.jenis || '').toString().toLowerCase().includes('jam')
+          );
 
-        if (approvedIzinJam) {
-          status = 'Dispensasi Izin';
-          lateMinutes = 0; // Bebas potongan denda keterlambatan!
+          if (approvedIzinJam) {
+            status = 'Dispensasi Izin';
+            lateMinutes = 0; // Bebas potongan denda keterlambatan!
+          }
         }
+      } else {
+        // Shift penugasan tanpa jam masuk/pulang: otomatis tepat waktu, bebas penalti
+        status = 'Tepat Waktu';
+        lateMinutes = 0;
       }
 
       if (existingIndex !== -1) {
@@ -2428,6 +2434,43 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
     const absensiAll = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
     const rosterAll = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
     const izinAll = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+    const shiftsAll = getSheetDataAsObjects(CONFIG.SHEET_SHIFT) || [];
+
+    // Helper: Deteksi apakah sebuah shift/schedule merupakan jadwal tanpa jam (Bogor, Bukittinggi, Luar Kota, Remote, dll)
+    const isNoHoursSchedule = (val) => {
+      if (!val) return false;
+      const sStr = val.toString().trim().toLowerCase();
+      if (sStr.includes('bogor') || 
+          sStr.includes('bukittinggi') || 
+          sStr.includes('tanpa jam') || 
+          sStr.includes('non jam') ||
+          sStr.includes('dinas') || 
+          sStr.includes('luar kota') || 
+          sStr.includes('remote') || 
+          sStr.includes('tugas luar')) {
+        return true;
+      }
+      if (Array.isArray(shiftsAll)) {
+        const matched = shiftsAll.find(s => s && (
+          (s.id_shift && s.id_shift.toString().trim().toLowerCase() === sStr) ||
+          (s.nama_shift && s.nama_shift.toString().trim().toLowerCase() === sStr)
+        ));
+        if (matched) {
+          const namaLower = (matched.nama_shift || '').toString().toLowerCase();
+          if (namaLower.includes('bogor') || namaLower.includes('bukittinggi') || namaLower.includes('dinas') || namaLower.includes('tanpa jam') || namaLower.includes('remote')) {
+            return true;
+          }
+          const masuk = (matched.jam_masuk || '').toString().trim();
+          const pulang = (matched.jam_pulang || '').toString().trim();
+          const emptyMasuk = !masuk || masuk === '-' || masuk === '' || masuk === '00:00';
+          const emptyPulang = !pulang || pulang === '-' || pulang === '' || pulang === '00:00';
+          if (emptyMasuk && emptyPulang) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
 
     // Filter absensi dalam rentang
     const absensiInRange = absensiAll.filter(a => a && a.tanggal && isDateInRange(a.tanggal, startDate, endDate));
@@ -2521,6 +2564,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
     // 2. Hitung Persentase Kehadiran per Karyawan (Target KPI 100%)
     let totalScheduledResort = 0;
     let totalHadirResort = 0;
+    let totalTanpaJamResort = 0;
 
     const employeeAttendance = karyawan.map(emp => {
       const empNik = String(emp.nik).trim();
@@ -2538,6 +2582,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
       let hariWajibKerja = 0;
       let hariOff = 0;
       let hariCuti = 0;
+      let hariTanpaJam = 0;
 
       if (empRoster.length > 0) {
         empRoster.forEach(r => {
@@ -2546,12 +2591,15 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
             hariOff++;
           } else if (['CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
             hariCuti++;
+          } else if (isNoHoursSchedule(shiftVal)) {
+            hariTanpaJam++;
           } else if (shiftVal !== '') {
             hariWajibKerja++;
           }
         });
       } else {
-        hariWajibKerja = Math.max(totalHadir, 1);
+        // Jika belum ada data roster khusus
+        hariWajibKerja = totalHadir;
       }
 
       const empIzinDays = leaveDetails
@@ -2567,6 +2615,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
 
       totalScheduledResort += hariWajibKerja;
       totalHadirResort += totalHadir;
+      totalTanpaJamResort += hariTanpaJam;
 
       let statusKPI = '100% (Mencapai Target)';
       let statusColor = 'emerald';
@@ -2592,6 +2641,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
         total_hadir: totalHadir,
         hari_off: hariOff,
         hari_cuti: Math.max(hariCuti, empIzinDays),
+        hari_tanpa_jam: hariTanpaJam,
         total_terlambat: totalTerlambat,
         menit_terlambat: totalMenitTerlambat,
         persen_kehadiran: persenKehadiran,
@@ -2618,6 +2668,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
         targetKPI: 100,
         totalHariWajib: totalScheduledResort,
         totalHadirRiil: totalHadirResort,
+        totalTanpaJam: totalTanpaJamResort,
         leaveStats: leaveStats
       },
       employeeAttendance: employeeAttendance,
@@ -2676,25 +2727,30 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
       'Total: <b style="color:#4338ca;">' + s.leaveStats.totalHari + ' Hari</b>' +
       '</td>' +
       '</tr>';
-    html += '</table></div>';
+    html += '</table>' +
+      '<p style="margin:6px 0 0 0; font-size:8px; color:#64748b; font-style:italic;">* Catatan: Hari Libur (OFF), Cuti/Izin resmi, dan Schedule penugasan tanpa jam kerja (Bogor, Bukittinggi, dll: ' + (s.totalTanpaJam || 0) + ' hari) tidak dihitung sebagai hari kerja wajib.</p>' +
+      '</div>';
 
     // Bagian 1: Tabel Persentase Kehadiran
     html += '<h4 style="color:#1e1b4b; margin:12px 0 6px 0; font-size:10.5px; text-transform:uppercase;">1. Persentase Kehadiran Karyawan (Target KPI: 100%)</h4>';
     html += '<table border="1" cellpadding="4" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:9px; border-color:#cbd5e1; margin-bottom:15px;">';
     html += '<tr style="background-color:#1e1b4b; color:white; font-size:8.5px; text-transform:uppercase;">' +
       '<th style="width:20px; text-align:center;">No</th>' +
-      '<th style="width:70px;">NIK</th>' +
+      '<th style="width:65px;">NIK</th>' +
       '<th>Nama Karyawan</th>' +
       '<th>Departemen</th>' +
-      '<th style="width:55px; text-align:center;">Wajib (Hr)</th>' +
-      '<th style="width:55px; text-align:center;">Hadir (Hr)</th>' +
+      '<th style="width:45px; text-align:center;">Wajib</th>' +
+      '<th style="width:45px; text-align:center;">Hadir</th>' +
+      '<th style="width:35px; text-align:center;">OFF</th>' +
+      '<th style="width:40px; text-align:center;">Cuti</th>' +
+      '<th style="width:50px; text-align:center;">Non-Jam</th>' +
       '<th style="width:50px; text-align:center;">Terlambat</th>' +
-      '<th style="width:65px; text-align:center;">% Kehadiran</th>' +
-      '<th style="width:85px; text-align:center;">Status KPI</th>' +
+      '<th style="width:55px; text-align:center;">% Hadir</th>' +
+      '<th style="width:80px; text-align:center;">Status KPI</th>' +
       '</tr>';
 
     if (empAtt.length === 0) {
-      html += '<tr><td colspan="9" style="text-align:center; padding:10px; color:#94a3b8;">Tidak ada data karyawan.</td></tr>';
+      html += '<tr><td colspan="12" style="text-align:center; padding:10px; color:#94a3b8;">Tidak ada data karyawan.</td></tr>';
     } else {
       empAtt.forEach((emp, idx) => {
         const bgRow = (idx % 2 === 1) ? '#f8fafc' : '#ffffff';
@@ -2706,6 +2762,9 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
           '<td>' + emp.departemen + '</td>' +
           '<td style="text-align:center;">' + emp.hari_wajib + '</td>' +
           '<td style="text-align:center; font-weight:bold; color:#059669;">' + emp.total_hadir + '</td>' +
+          '<td style="text-align:center; color:#64748b;">' + emp.hari_off + '</td>' +
+          '<td style="text-align:center; color:#7c3aed;">' + emp.hari_cuti + '</td>' +
+          '<td style="text-align:center; color:#0284c7; font-weight:bold;">' + (emp.hari_tanpa_jam || 0) + '</td>' +
           '<td style="text-align:center;">' + (emp.total_terlambat > 0 ? emp.total_terlambat + 'x (' + emp.menit_terlambat + 'm)' : '-') + '</td>' +
           '<td style="text-align:center; font-weight:bold; color:' + pctColor + ';">' + emp.persen_kehadiran + '%</td>' +
           '<td style="text-align:center; font-size:8px;">' + emp.status_kpi + '</td>' +
