@@ -2849,65 +2849,193 @@
         </div>
     </div>
 
-    <!-- MODAL 13: FORM MADING DIGITAL RESORT -->
+    <!-- MODAL 13: FORM MADING DIGITAL RESORT (MULTI-MEDIA) -->
     <div id="modal-mading"
         class="fixed inset-0 bg-slate-950/70 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 transition-all">
-        <div class="card-saas p-6 w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto animate-sheet border border-slate-200/80 shadow-2xl">
+        <div class="card-saas p-6 w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto animate-sheet border border-slate-200/80 shadow-2xl">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
-                <h3 class="font-bold text-gray-800 text-sm"><i class="fa-solid fa-newspaper text-blue-800 mr-2"></i>Form
+                <h3 class="font-bold text-gray-800 text-sm"><i class="fa-solid fa-newspaper text-indigo-600 mr-2"></i>Form
                     Mading Digital Resort</h3>
                 <button onclick="closeModalMading()" class="text-gray-400 hover:text-gray-600"><i
                         class="fa-solid fa-xmark"></i></button>
             </div>
-            <form onsubmit="handleMadingSubmit(event)" class="space-y-3 text-xs">
+            <form onsubmit="handleMadingSubmit(event)" class="space-y-3.5 text-xs">
                 <input type="hidden" id="mading-id">
+                <input type="hidden" id="mading-tipe-lampiran" value="FOTO">
+                <input type="hidden" id="mading-existing-url" value="">
+                <input type="hidden" id="mading-existing-name" value="">
+
                 <div>
-                    <label class="block font-semibold text-gray-600 mb-1">Judul Pengumuman *</label>
-                    <input type="text" id="mading-judul" required class="w-full p-2.5 border rounded-xl"
-                        placeholder="Misal: Agenda General Cleaning">
+                    <label class="block font-semibold text-gray-700 mb-1">Judul Pengumuman *</label>
+                    <input type="text" id="mading-judul" required class="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-indigo-500/20"
+                        placeholder="Misal: Agenda General Cleaning atau SOP Pelayanan Baru">
                 </div>
+
                 <div>
-                    <label class="block font-semibold text-gray-600 mb-1">Status Publikasi *</label>
-                    <select id="mading-status" class="w-full p-2.5 border rounded-xl bg-white font-bold">
+                    <label class="block font-semibold text-gray-700 mb-1">Status Publikasi *</label>
+                    <select id="mading-status" class="w-full p-2.5 border rounded-xl bg-white font-bold text-slate-700">
                         <option value="Aktif">Aktif (Tampil di Karyawan)</option>
                         <option value="Non-Aktif">Non-Aktif (Sembunyikan)</option>
                     </select>
                 </div>
+
+                <!-- SELECTOR TIPE LAMPIRAN -->
                 <div>
-                    <label class="block font-semibold text-gray-600 mb-1">Foto / Poster Mading (Opsional)</label>
-                    <input type="file" id="mading-foto-file" accept="image/*"
-                        class="w-full p-2 border rounded-xl bg-white text-xs">
+                    <label class="block font-semibold text-gray-700 mb-1.5">Jenis Lampiran</label>
+                    <div class="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-2xl text-[11px] font-semibold text-slate-600">
+                        <button type="button" id="tab-mading-tipe-foto" onclick="selectMadingTipe('FOTO')"
+                            class="py-2 px-1 rounded-xl text-center transition flex flex-col sm:flex-row items-center justify-center gap-1 bg-white text-indigo-700 shadow-sm font-bold">
+                            <i class="fa-solid fa-image"></i><span>Foto</span>
+                        </button>
+                        <button type="button" id="tab-mading-tipe-video" onclick="selectMadingTipe('VIDEO')"
+                            class="py-2 px-1 rounded-xl text-center transition flex flex-col sm:flex-row items-center justify-center gap-1 hover:text-indigo-600">
+                            <i class="fa-solid fa-video"></i><span>Video</span>
+                        </button>
+                        <button type="button" id="tab-mading-tipe-dokumen" onclick="selectMadingTipe('DOKUMEN')"
+                            class="py-2 px-1 rounded-xl text-center transition flex flex-col sm:flex-row items-center justify-center gap-1 hover:text-indigo-600">
+                            <i class="fa-solid fa-file-lines"></i><span>Dokumen</span>
+                        </button>
+                        <button type="button" id="tab-mading-tipe-link" onclick="selectMadingTipe('LINK')"
+                            class="py-2 px-1 rounded-xl text-center transition flex flex-col sm:flex-row items-center justify-center gap-1 hover:text-indigo-600">
+                            <i class="fa-solid fa-link"></i><span>Link Web</span>
+                        </button>
+                    </div>
                 </div>
+
+                <!-- SECTION UNGGAH BERKAS (FOTO / DOKUMEN / VIDEO FILE) -->
+                <div id="sec-mading-file" class="space-y-1.5 p-3 rounded-2xl bg-indigo-50/40 border border-indigo-100">
+                    <div class="flex items-center justify-between">
+                        <label id="lbl-mading-file" class="block font-semibold text-indigo-950 text-[11px]">Unggah Foto / Poster (Opsional)</label>
+                        <span id="hint-mading-file" class="text-[10px] text-slate-400">JPG, PNG, WebP (Maks 10MB)</span>
+                    </div>
+                    <input type="file" id="mading-file-input" accept="image/*"
+                        class="w-full p-2 border border-slate-200 rounded-xl bg-white text-xs file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                    <p id="subhint-mading-file" class="text-[10px] text-slate-500">Pilih gambar untuk menjadi poster pengumuman.</p>
+                </div>
+
+                <!-- SUB-OPTION VIDEO (FILE ATAU LINK YOUTUBE/DRIVE) -->
+                <div id="sec-mading-video-opt" class="hidden space-y-2 p-3 rounded-2xl bg-purple-50/40 border border-purple-100">
+                    <label class="block font-semibold text-purple-950 text-[11px]">Metode Semat Video</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                            <input type="radio" name="video-mode" value="file" checked onchange="toggleVideoMode('file')">
+                            <span>Upload File MP4</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 cursor-pointer">
+                            <input type="radio" name="video-mode" value="link" onchange="toggleVideoMode('link')">
+                            <span>Link YouTube / Google Drive</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- SECTION LINK TAUTAN / URL -->
+                <div id="sec-mading-link" class="hidden space-y-2 p-3 rounded-2xl bg-sky-50/40 border border-sky-100">
+                    <label class="block font-semibold text-sky-950 text-[11px]">Alamat Tautan URL (Link) *</label>
+                    <input type="url" id="mading-link-url" class="w-full p-2.5 border border-slate-200 rounded-xl bg-white text-xs"
+                        placeholder="Contoh: https://forms.gle/xyz123 atau https://youtube.com/...">
+                    <div>
+                        <label class="block font-semibold text-slate-600 text-[10.5px] mb-1">Label / Nama Tautan (Opsional)</label>
+                        <input type="text" id="mading-link-label" class="w-full p-2 border border-slate-200 rounded-xl bg-white text-xs"
+                            placeholder="Misal: Kuesioner Kepuasan Karyawan">
+                    </div>
+                </div>
+
+                <!-- INFO LAMPIRAN SAAT EDIT -->
+                <div id="sec-mading-existing-info" class="hidden p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between">
+                    <div class="truncate mr-2">
+                        <i class="fa-solid fa-paperclip mr-1 text-amber-700"></i>
+                        <span>Lampiran tersimpan: </span>
+                        <strong id="txt-mading-existing" class="font-semibold">Nama file</strong>
+                    </div>
+                    <span class="text-[9.5px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">Biarkan kosong jika tidak diganti</span>
+                </div>
+
+                <!-- ISI PENGUMUMAN -->
                 <div>
-                    <label class="block font-semibold text-gray-600 mb-1">Isi Pengumuman Lengkap *</label>
-                    <textarea id="mading-isi" rows="5" required class="w-full p-2.5 border rounded-xl"
-                        placeholder="Tuliskan pengumuman resort secara rinci..."></textarea>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block font-semibold text-gray-700">Isi Pengumuman Lengkap *</label>
+                        <span class="text-[10px] text-indigo-600 font-semibold flex items-center gap-1"><i class="fa-solid fa-link"></i> Auto-Link Aktif</span>
+                    </div>
+                    <textarea id="mading-isi" rows="5" required class="w-full p-2.5 border rounded-xl focus:ring-2 focus:ring-indigo-500/20 text-xs leading-relaxed"
+                        placeholder="Tuliskan isi pengumuman... Anda juga bisa mengetik alamat website seperti https://... atau www.... dan sistem akan otomatis mengubahnya menjadi link yang bisa diklik."></textarea>
+                    <p class="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                        <i class="fa-solid fa-circle-info text-indigo-500"></i> Setiap link yang Anda ketik di atas otomatis terdeteksi dan bisa diklik oleh karyawan.
+                    </p>
                 </div>
+
                 <div class="flex gap-2 justify-end pt-3 border-t">
                     <button type="button" onclick="closeModalMading()"
-                        class="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl font-semibold">Batal</button>
+                        class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl font-semibold transition">Batal</button>
                     <button type="submit" id="btn-submit-mading" class="btn-primary px-5 py-2">Simpan Mading</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- MODAL 14: DETAIL MADING & DOWNLOAD FOTO -->
+    <!-- MODAL 14: DETAIL MADING & MEDIA HUB INTERAKTIF -->
     <div id="modal-mading-detail"
         class="fixed inset-0 bg-slate-950/70 backdrop-blur-md hidden flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 transition-all">
         <div class="card-saas p-6 w-full max-w-lg bg-white space-y-4 max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl animate-sheet border border-slate-200/80 shadow-2xl">
             <div class="flex justify-between items-center border-b pb-2">
                 <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-newspaper text-blue-800 text-lg"></i>
-                    <h3 class="font-bold text-gray-800 text-sm" id="md-detail-judul">Judul Pengumuman</h3>
+                    <span id="md-detail-icon-tipe" class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-newspaper"></i>
+                    </span>
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-sm leading-tight" id="md-detail-judul">Judul Pengumuman</h3>
+                        <span id="md-detail-badge-tipe" class="inline-block mt-0.5 text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">Foto</span>
+                    </div>
                 </div>
                 <button onclick="closeModalDetailMading()" class="text-gray-400 hover:text-gray-600 text-lg"><i
                         class="fa-solid fa-xmark"></i></button>
             </div>
 
-            <div
-                class="w-full bg-gray-900/5 rounded-2xl border p-1 flex items-center justify-center max-h-96 overflow-hidden">
-                <img id="md-detail-foto" src="" class="w-full max-h-96 object-contain rounded-xl" alt="Foto Mading">
+            <!-- CONTAINER MEDIA RESPONSIF DINAMIS -->
+            <div id="md-detail-media-container" class="w-full rounded-2xl border border-slate-100 overflow-hidden bg-slate-50">
+                <!-- Foto -->
+                <div id="md-media-foto-wrap" class="w-full flex items-center justify-center max-h-96 overflow-hidden bg-slate-900/5 p-1">
+                    <img id="md-detail-foto" src="" class="w-full max-h-96 object-contain rounded-xl" alt="Foto Mading">
+                </div>
+                <!-- Video Direct Player -->
+                <div id="md-media-video-wrap" class="hidden w-full bg-black rounded-xl overflow-hidden">
+                    <video id="md-detail-video-player" controls class="w-full max-h-80 mx-auto" playsinline></video>
+                </div>
+                <!-- Video Iframe (YouTube / Google Drive Preview) -->
+                <div id="md-media-iframe-wrap" class="hidden w-full aspect-video rounded-xl overflow-hidden bg-black">
+                    <iframe id="md-detail-video-iframe" class="w-full h-full border-0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+                </div>
+                <!-- Dokumen Card -->
+                <div id="md-media-dokumen-wrap" class="hidden p-4 bg-white rounded-xl border border-slate-200/80 flex items-center justify-between gap-3 shadow-sm">
+                    <div class="flex items-center gap-3 truncate">
+                        <div id="md-doc-icon-box" class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl shrink-0">
+                            <i class="fa-solid fa-file-pdf"></i>
+                        </div>
+                        <div class="truncate">
+                            <p id="md-doc-name" class="font-bold text-xs text-slate-800 truncate">Lampiran_Dokumen.pdf</p>
+                            <p class="text-[10px] text-slate-400">Berkas Dokumen Resmi Balcone</p>
+                        </div>
+                    </div>
+                    <a id="md-doc-download-btn" href="#" target="_blank" rel="noopener noreferrer"
+                        class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka / Unduh
+                    </a>
+                </div>
+                <!-- Link Eksternal Card -->
+                <div id="md-media-link-wrap" class="hidden p-4 bg-gradient-to-r from-sky-50 to-indigo-50 rounded-xl border border-sky-100 flex items-center justify-between gap-3 shadow-sm">
+                    <div class="flex items-center gap-3 truncate">
+                        <div class="w-12 h-12 rounded-2xl bg-white text-sky-600 shadow-sm border border-sky-100 flex items-center justify-center text-xl shrink-0">
+                            <i class="fa-solid fa-globe"></i>
+                        </div>
+                        <div class="truncate">
+                            <p id="md-link-label" class="font-bold text-xs text-slate-800 truncate">Tautan Resmi</p>
+                            <p id="md-link-url-text" class="text-[10px] text-sky-700 truncate font-mono">https://...</p>
+                        </div>
+                    </div>
+                    <a id="md-link-visit-btn" href="#" target="_blank" rel="noopener noreferrer"
+                        class="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Kunjungi
+                    </a>
+                </div>
             </div>
 
             <div class="flex items-center justify-between text-[11px] text-gray-400 font-semibold">
@@ -2915,16 +3043,19 @@
                 <span id="md-detail-tanggal"><i class="fa-solid fa-calendar mr-1"></i> 25/09/2026</span>
             </div>
 
-            <div class="p-4 bg-gray-50 rounded-2xl border text-xs text-gray-700 leading-relaxed whitespace-pre-line"
+            <!-- ISI PENGUMUMAN DENGAN LINK YANG DAPAT DIKLIK -->
+            <div class="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/70 text-xs text-slate-700 leading-relaxed break-words"
                 id="md-detail-isi">
                 Isi pengumuman Mading akan tampil di sini...
             </div>
 
             <div class="flex items-center justify-between pt-2 border-t">
-                <button onclick="downloadMadingImage(event)"
-                    class="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition">
-                    <i class="fa-solid fa-download"></i> Unduh Foto Mading
-                </button>
+                <div id="md-detail-action-slot">
+                    <button id="btn-action-mading-download" onclick="downloadMadingImage(event)"
+                        class="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition">
+                        <i class="fa-solid fa-download"></i> Unduh Foto Mading
+                    </button>
+                </div>
                 <button onclick="closeModalDetailMading()" class="btn-primary px-5 py-2 text-xs">Tutup
                     Pengumuman</button>
             </div>
@@ -3935,22 +4066,37 @@
                         const adminMadingContainer = document.getElementById('admin-mading-list');
                         if (adminMadingContainer) {
                             adminMadingContainer.innerHTML = '';
-                            const announcements = res.announcements || [];
-                            if (announcements.length > 0) {
-                                announcements.forEach(function (m) {
+                            currentAdminAnnouncementsList = res.announcements || [];
+                            if (currentAdminAnnouncementsList.length > 0) {
+                                currentAdminAnnouncementsList.forEach(function (m, idx) {
                                     const card = document.createElement('div');
                                     card.className = 'card-saas p-4 flex flex-col justify-between border-l-4 ' + (m.status_aktif === 'Aktif' ? 'border-emerald-500' : 'border-gray-300');
+                                    
+                                    const tipe = (m.tipe_lampiran || 'FOTO').toUpperCase();
+                                    let badgeTipe = '';
+                                    if (tipe === 'VIDEO') badgeTipe = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-800"><i class="fa-solid fa-video mr-1"></i>Video</span>';
+                                    else if (tipe === 'DOKUMEN') badgeTipe = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-800"><i class="fa-solid fa-file-lines mr-1"></i>Dokumen</span>';
+                                    else if (tipe === 'LINK') badgeTipe = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-sky-800"><i class="fa-solid fa-link mr-1"></i>Tautan</span>';
+                                    else if (tipe === 'NONE') badgeTipe = '';
+                                    else badgeTipe = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-100 text-indigo-800"><i class="fa-solid fa-image mr-1"></i>Foto</span>';
+
                                     card.innerHTML = '<div>' +
                                         '<div class="flex justify-between items-center mb-2">' +
+                                        '<div class="flex items-center gap-1.5">' +
                                         '<span class="text-[10px] text-gray-400 font-bold">' + m.tanggal_post + '</span>' +
+                                        badgeTipe +
+                                        '</div>' +
                                         '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold ' + (m.status_aktif === 'Aktif' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600') + '">' + m.status_aktif + '</span>' +
                                         '</div>' +
                                         '<h4 class="font-bold text-xs text-gray-800 mb-1">' + m.judul + '</h4>' +
-                                        '<p class="text-xs text-gray-600 line-clamp-2 mb-3">' + m.isi_pengumuman + '</p>' +
+                                        '<div class="text-xs text-gray-600 line-clamp-2 mb-3 leading-relaxed">' + formatMadingText(m.isi_pengumuman) + '</div>' +
                                         '</div>' +
-                                        '<div class="flex justify-end gap-2 border-t pt-2 mt-2">' +
-                                        '<button onclick="openModalMading(\'' + m.id_pengumuman + '\', \'' + m.judul + '\', \'' + m.isi_pengumuman + '\', \'' + m.status_aktif + '\')" class="text-xs text-blue-700 font-bold hover:underline"><i class="fa-solid fa-pen mr-1"></i>Edit</button>' +
-                                        '<button onclick="deleteMading(\'' + m.id_pengumuman + '\')" class="text-xs text-rose-600 font-bold hover:underline"><i class="fa-solid fa-trash mr-1"></i>Hapus</button>' +
+                                        '<div class="flex justify-between items-center border-t pt-2 mt-2">' +
+                                        '<button onclick="openModalDetailMadingFromAdmin(' + idx + ')" class="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"><i class="fa-solid fa-eye"></i>Pratinjau</button>' +
+                                        '<div class="flex gap-3">' +
+                                        '<button onclick="editMadingFromAdmin(' + idx + ')" class="text-xs text-blue-700 font-bold hover:underline flex items-center gap-1"><i class="fa-solid fa-pen"></i>Edit</button>' +
+                                        '<button onclick="deleteMading(\'' + m.id_pengumuman + '\')" class="text-xs text-rose-600 font-bold hover:underline flex items-center gap-1"><i class="fa-solid fa-trash"></i>Hapus</button>' +
+                                        '</div>' +
                                         '</div>';
                                     adminMadingContainer.appendChild(card);
                                 });
@@ -4128,20 +4274,84 @@
                             const card = document.createElement('div');
                             card.className = 'bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-3';
                             card.onclick = function () { openModalDetailMading(idx); };
-                            const mFoto = m.foto_pengumuman || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600';
+
+                            const tipe = (m.tipe_lampiran || 'FOTO').toUpperCase();
+                            const mMedia = m.foto_pengumuman || '';
+                            let mediaHtml = '';
+                            let actionLabel = 'Baca Detail';
+
+                            if (tipe === 'VIDEO') {
+                                actionLabel = 'Tonton Video & Detail';
+                                const ytId = getYouTubeVideoId(mMedia);
+                                if (ytId) {
+                                    mediaHtml = '<div class="relative w-full h-44 bg-slate-900 rounded-xl mb-3 overflow-hidden flex items-center justify-center">' +
+                                        '<img src="https://img.youtube.com/vi/' + ytId + '/hqdefault.jpg" class="w-full h-full object-cover opacity-80">' +
+                                        '<span class="absolute w-11 h-11 rounded-full bg-rose-600/90 text-white flex items-center justify-center shadow-lg"><i class="fa-solid fa-play ml-0.5 text-sm"></i></span>' +
+                                        '</div>';
+                                } else {
+                                    mediaHtml = '<div class="relative w-full h-40 bg-slate-900 rounded-xl mb-3 flex items-center justify-center text-white">' +
+                                        '<div class="text-center p-3">' +
+                                        '<span class="w-11 h-11 rounded-full bg-purple-600 text-white inline-flex items-center justify-center shadow-md mb-1"><i class="fa-solid fa-video text-sm"></i></span>' +
+                                        '<p class="text-[11px] font-semibold text-slate-200">Video Pengumuman</p>' +
+                                        '</div>' +
+                                        '</div>';
+                                }
+                            } else if (tipe === 'DOKUMEN') {
+                                actionLabel = 'Buka & Unduh Dokumen';
+                                const docMeta = getDocumentMeta(m.nama_lampiran || mMedia);
+                                mediaHtml = '<div class="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50 mb-3 flex items-center gap-3">' +
+                                    '<div class="w-10 h-10 rounded-xl ' + docMeta.color + ' flex items-center justify-center text-lg shrink-0">' +
+                                    '<i class="fa-solid ' + docMeta.icon + '"></i>' +
+                                    '</div>' +
+                                    '<div class="truncate">' +
+                                    '<p class="font-bold text-xs text-slate-800 truncate">' + (m.nama_lampiran || 'Berkas Dokumen') + '</p>' +
+                                    '<span class="text-[9.5px] text-slate-400 font-semibold">' + docMeta.label + '</span>' +
+                                    '</div>' +
+                                    '</div>';
+                            } else if (tipe === 'LINK') {
+                                actionLabel = 'Kunjungi Tautan';
+                                mediaHtml = '<div class="p-3 rounded-xl border border-sky-100 bg-sky-50/50 mb-3 flex items-center gap-3">' +
+                                    '<div class="w-10 h-10 rounded-xl bg-white text-sky-600 shadow-sm border border-sky-100 flex items-center justify-center text-base shrink-0">' +
+                                    '<i class="fa-solid fa-link"></i>' +
+                                    '</div>' +
+                                    '<div class="truncate">' +
+                                    '<p class="font-bold text-xs text-slate-800 truncate">' + (m.nama_lampiran || 'Tautan Eksternal') + '</p>' +
+                                    '<p class="text-[9.5px] text-sky-700 font-mono truncate">' + mMedia + '</p>' +
+                                    '</div>' +
+                                    '</div>';
+                            } else if (tipe === 'NONE') {
+                                mediaHtml = '';
+                            } else {
+                                // Default FOTO
+                                actionLabel = 'Lihat Foto & Detail';
+                                const imgSrc = mMedia || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600';
+                                mediaHtml = '<div class="w-full max-h-56 bg-gray-900/5 rounded-xl mb-3 border overflow-hidden flex items-center justify-center">' +
+                                    '<img src="' + imgSrc + '" class="w-full max-h-56 object-contain rounded-xl" onerror="this.src=\'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600\'">' +
+                                    '</div>';
+                            }
+
+                            // Badge Tipe
+                            let badgeTipeHtml = '';
+                            if (tipe === 'VIDEO') badgeTipeHtml = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-800"><i class="fa-solid fa-video mr-1"></i>Video</span>';
+                            else if (tipe === 'DOKUMEN') badgeTipeHtml = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-800"><i class="fa-solid fa-file-lines mr-1"></i>Dokumen</span>';
+                            else if (tipe === 'LINK') badgeTipeHtml = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-sky-100 text-sky-800"><i class="fa-solid fa-link mr-1"></i>Tautan</span>';
+                            else if (tipe === 'NONE') badgeTipeHtml = '';
+                            else badgeTipeHtml = '<span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-100 text-indigo-800"><i class="fa-solid fa-image mr-1"></i>Foto</span>';
+
                             card.innerHTML = '<div>' +
-                                '<div class="w-full max-h-56 bg-gray-900/5 rounded-xl mb-3 border overflow-hidden flex items-center justify-center">' +
-                                '<img src="' + mFoto + '" class="w-full max-h-56 object-contain rounded-xl" onerror="this.src=\'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600\'">' +
-                                '</div>' +
+                                mediaHtml +
                                 '<div class="flex justify-between items-center text-[10px] text-gray-400 font-semibold mb-1">' +
                                 '<span><i class="fa-solid fa-calendar mr-1"></i>' + m.tanggal_post + '</span>' +
-                                '<span><i class="fa-solid fa-user-pen mr-1"></i>' + m.pembuat + '</span>' +
+                                '<div class="flex items-center gap-1.5">' +
+                                badgeTipeHtml +
+                                '<span><i class="fa-solid fa-user-pen mr-1"></i>' + (m.pembuat || 'Admin HR') + '</span>' +
+                                '</div>' +
                                 '</div>' +
                                 '<h4 class="font-bold text-xs text-gray-800 line-clamp-1">' + m.judul + '</h4>' +
-                                '<p class="text-xs text-gray-500 line-clamp-2 mt-1 whitespace-pre-line">' + m.isi_pengumuman + '</p>' +
+                                '<div class="text-xs text-gray-500 line-clamp-2 mt-1 leading-relaxed">' + formatMadingText(m.isi_pengumuman) + '</div>' +
                                 '</div>' +
-                                '<div class="text-[11px] font-bold text-blue-800 flex items-center justify-between pt-2 border-t">' +
-                                '<span>Baca Detail & Unduh Foto</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>' +
+                                '<div class="text-[11px] font-bold text-indigo-600 flex items-center justify-between pt-2 border-t">' +
+                                '<span>' + actionLabel + '</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>' +
                                 '</div>';
                             madingContainer.appendChild(card);
                         });
@@ -6316,13 +6526,171 @@
             });
         }
 
-        function openModalMading(id = '', judul = '', isi = '', status = 'Aktif') {
+        let currentAdminAnnouncementsList = [];
+
+        function formatMadingText(text) {
+            if (!text) return '';
+            let safe = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const urlPattern = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s]|www\.[^\s<]+[^<.,:;"')\]\s])/gi;
+            safe = safe.replace(urlPattern, function (url) {
+                let href = url;
+                if (url.toLowerCase().indexOf('www.') === 0) {
+                    href = 'https://' + url;
+                }
+                return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-indigo-600 hover:text-indigo-800 underline font-semibold break-all inline-flex items-center gap-1 bg-indigo-50/70 hover:bg-indigo-100/70 px-1.5 py-0.5 rounded transition">' +
+                    '<i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>' + url + '</a>';
+            });
+
+            return safe.replace(/\n/g, '<br>');
+        }
+
+        function getYouTubeVideoId(url) {
+            if (!url) return '';
+            const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+            return match ? match[1] : '';
+        }
+
+        function getDocumentMeta(filenameOrUrl) {
+            const str = (filenameOrUrl || '').toLowerCase();
+            if (str.indexOf('.pdf') !== -1 || str.indexOf('pdf') !== -1) {
+                return { icon: 'fa-file-pdf', color: 'text-rose-600 bg-rose-50 border-rose-200', label: 'PDF Dokumen' };
+            } else if (str.indexOf('.xls') !== -1 || str.indexOf('.xlsx') !== -1 || str.indexOf('sheet') !== -1) {
+                return { icon: 'fa-file-excel', color: 'text-emerald-600 bg-emerald-50 border-emerald-200', label: 'Spreadsheet Excel' };
+            } else if (str.indexOf('.doc') !== -1 || str.indexOf('.docx') !== -1 || str.indexOf('word') !== -1) {
+                return { icon: 'fa-file-word', color: 'text-blue-600 bg-blue-50 border-blue-200', label: 'Dokumen Word' };
+            } else if (str.indexOf('.ppt') !== -1 || str.indexOf('.pptx') !== -1) {
+                return { icon: 'fa-file-powerpoint', color: 'text-amber-600 bg-amber-50 border-amber-200', label: 'Presentasi PPT' };
+            }
+            return { icon: 'fa-file-lines', color: 'text-indigo-600 bg-indigo-50 border-indigo-200', label: 'Berkas Dokumen' };
+        }
+
+        function selectMadingTipe(tipe) {
+            tipe = (tipe || 'FOTO').toUpperCase();
+            document.getElementById('mading-tipe-lampiran').value = tipe;
+
+            // Reset tab styles
+            const tabs = ['FOTO', 'VIDEO', 'DOKUMEN', 'LINK'];
+            tabs.forEach(function (t) {
+                const el = document.getElementById('tab-mading-tipe-' + t.toLowerCase());
+                if (el) {
+                    if (t === tipe) {
+                        el.className = 'py-2 px-1 rounded-xl text-center transition flex flex-col sm:flex-row items-center justify-center gap-1 bg-white text-indigo-700 shadow-sm font-bold';
+                    } else {
+                        el.className = 'py-2 px-1 rounded-xl text-center transition flex flex-col sm:flex-row items-center justify-center gap-1 hover:text-indigo-600 text-slate-600';
+                    }
+                }
+            });
+
+            const secFile = document.getElementById('sec-mading-file');
+            const secVideoOpt = document.getElementById('sec-mading-video-opt');
+            const secLink = document.getElementById('sec-mading-link');
+            const fileInput = document.getElementById('mading-file-input');
+            const lblFile = document.getElementById('lbl-mading-file');
+            const hintFile = document.getElementById('hint-mading-file');
+            const subhintFile = document.getElementById('subhint-mading-file');
+
+            if (tipe === 'FOTO') {
+                secFile.classList.remove('hidden');
+                secVideoOpt.classList.add('hidden');
+                secLink.classList.add('hidden');
+                fileInput.accept = 'image/*';
+                lblFile.innerText = 'Unggah Foto / Poster (Opsional)';
+                hintFile.innerText = 'JPG, PNG, WebP (Maks 10MB)';
+                subhintFile.innerText = 'Pilih gambar untuk menjadi poster pengumuman.';
+            } else if (tipe === 'VIDEO') {
+                secFile.classList.remove('hidden');
+                secVideoOpt.classList.remove('hidden');
+                secLink.classList.add('hidden');
+                fileInput.accept = 'video/mp4,video/webm';
+                lblFile.innerText = 'Unggah Berkas Video (MP4 / WebM)';
+                hintFile.innerText = 'Maks 15-20MB';
+                subhintFile.innerText = 'Pilih file video MP4. Atau pilih radio "Link YouTube" di atas jika video berukuran besar.';
+                const rFile = document.querySelector('input[name="video-mode"][value="file"]');
+                if (rFile && rFile.checked) toggleVideoMode('file');
+            } else if (tipe === 'DOKUMEN') {
+                secFile.classList.remove('hidden');
+                secVideoOpt.classList.add('hidden');
+                secLink.classList.add('hidden');
+                fileInput.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+                lblFile.innerText = 'Unggah Berkas Dokumen Resmi (PDF / Word / Excel / PPT)';
+                hintFile.innerText = 'PDF, DOC, XLS, PPT (Maks 10MB)';
+                subhintFile.innerText = 'Dokumen akan disimpan aman di Drive dan dapat diunduh langsung oleh staf.';
+            } else if (tipe === 'LINK') {
+                secFile.classList.add('hidden');
+                secVideoOpt.classList.add('hidden');
+                secLink.classList.remove('hidden');
+            }
+        }
+
+        function toggleVideoMode(mode) {
+            const secFile = document.getElementById('sec-mading-file');
+            const secLink = document.getElementById('sec-mading-link');
+            const linkUrlInput = document.getElementById('mading-link-url');
+            if (mode === 'file') {
+                secFile.classList.remove('hidden');
+                secLink.classList.add('hidden');
+            } else {
+                secFile.classList.add('hidden');
+                secLink.classList.remove('hidden');
+                linkUrlInput.placeholder = 'Contoh: https://www.youtube.com/watch?v=... atau link Drive';
+            }
+        }
+
+        function openModalMading(id = '', judul = '', isi = '', status = 'Aktif', tipe = 'FOTO', url = '', nama = '') {
             document.getElementById('mading-id').value = id;
             document.getElementById('mading-judul').value = judul;
             document.getElementById('mading-isi').value = isi;
             document.getElementById('mading-status').value = status;
-            document.getElementById('mading-foto-file').value = '';
+            document.getElementById('mading-file-input').value = '';
+            document.getElementById('mading-link-url').value = '';
+            document.getElementById('mading-link-label').value = '';
+            document.getElementById('mading-existing-url').value = url || '';
+            document.getElementById('mading-existing-name').value = nama || '';
+
+            const infoExisting = document.getElementById('sec-mading-existing-info');
+            if (url) {
+                infoExisting.classList.remove('hidden');
+                document.getElementById('txt-mading-existing').innerText = nama || (url.length > 40 ? url.slice(0, 37) + '...' : url);
+            } else {
+                infoExisting.classList.add('hidden');
+            }
+
+            selectMadingTipe(tipe || 'FOTO');
+
+            if (tipe === 'LINK' && url) {
+                document.getElementById('mading-link-url').value = url;
+                document.getElementById('mading-link-label').value = nama || '';
+            } else if (tipe === 'VIDEO' && url && !url.includes('base64,')) {
+                if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('drive.google.com')) {
+                    const rLink = document.querySelector('input[name="video-mode"][value="link"]');
+                    if (rLink) rLink.checked = true;
+                    toggleVideoMode('link');
+                    document.getElementById('mading-link-url').value = url;
+                    document.getElementById('mading-link-label').value = nama || '';
+                }
+            }
+
             document.getElementById('modal-mading').classList.remove('hidden');
+        }
+
+        function editMadingFromAdmin(idx) {
+            const m = (currentAdminAnnouncementsList && currentAdminAnnouncementsList[idx]) || (currentAnnouncementsList && currentAnnouncementsList[idx]);
+            if (!m) return;
+            openModalMading(
+                m.id_pengumuman,
+                m.judul,
+                m.isi_pengumuman,
+                m.status_aktif || 'Aktif',
+                m.tipe_lampiran || 'FOTO',
+                m.foto_pengumuman || '',
+                m.nama_lampiran || ''
+            );
         }
 
         function closeModalMading() {
@@ -6332,38 +6700,80 @@
         function handleMadingSubmit(e) {
             e.preventDefault();
             const id = document.getElementById('mading-id').value;
-            const judul = document.getElementById('mading-judul').value;
-            const isi = document.getElementById('mading-isi').value;
+            const judul = document.getElementById('mading-judul').value.trim();
+            const isi = document.getElementById('mading-isi').value.trim();
             const status = document.getElementById('mading-status').value;
-            const fileInput = document.getElementById('mading-foto-file');
+            const tipe = document.getElementById('mading-tipe-lampiran').value || 'FOTO';
+            const fileInput = document.getElementById('mading-file-input');
+            const linkUrl = document.getElementById('mading-link-url').value.trim();
+            const linkLabel = document.getElementById('mading-link-label').value.trim();
+            const existingUrl = document.getElementById('mading-existing-url').value;
+            const existingName = document.getElementById('mading-existing-name').value;
 
             const btn = document.getElementById('btn-submit-mading');
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Menyimpan...';
 
-            let fotoBase64 = '';
-
-            const sendProcess = () => {
-                runBackend('savePengumuman', [id, judul, isi, status, fotoBase64], function (res) {
+            const sendProcess = (fileData, namaLampiran) => {
+                runBackend('savePengumuman', [id, judul, isi, status, fileData, tipe, namaLampiran], function (res) {
                     btn.disabled = false;
                     btn.innerHTML = 'Simpan Mading';
-                    if (res.success) {
+                    if (res && res.success) {
                         showToast(res.message, 'success');
                         closeModalMading();
                         loadAdminDashboard();
-                    } else showToast(res.message, 'error');
+                    } else {
+                        showToast((res && res.message) || 'Gagal menyimpan pengumuman.', 'error');
+                    }
+                }, function (err) {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Simpan Mading';
+                    showToast('Error koneksi: ' + (err.message || err), 'error');
                 });
             };
 
+            // Mode 1: Jika tipe LINK
+            if (tipe === 'LINK') {
+                if (!linkUrl && !existingUrl) {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Simpan Mading';
+                    showToast('Harap masukkan alamat URL tautan.', 'warning');
+                    return;
+                }
+                const targetUrl = linkUrl || existingUrl;
+                const targetName = linkLabel || existingName || targetUrl;
+                sendProcess(targetUrl, targetName);
+                return;
+            }
+
+            // Mode 2: Jika tipe VIDEO dengan mode link YouTube/Drive
+            const isVideoLinkMode = (tipe === 'VIDEO') && document.querySelector('input[name="video-mode"][value="link"]')?.checked;
+            if (isVideoLinkMode) {
+                if (!linkUrl && !existingUrl) {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Simpan Mading';
+                    showToast('Harap masukkan alamat URL video YouTube / Google Drive.', 'warning');
+                    return;
+                }
+                const targetUrl = linkUrl || existingUrl;
+                const targetName = linkLabel || existingName || 'Video YouTube / Drive';
+                sendProcess(targetUrl, targetName);
+                return;
+            }
+
+            // Mode 3: Upload berkas (Foto, Dokumen, atau Video File)
             if (fileInput.files && fileInput.files[0]) {
+                const file = fileInput.files[0];
+                const originalName = file.name;
                 const reader = new FileReader();
                 reader.onload = function (evt) {
-                    fotoBase64 = evt.target.result;
-                    sendProcess();
+                    const base64Data = evt.target.result;
+                    sendProcess(base64Data, originalName);
                 };
-                reader.readAsDataURL(fileInput.files[0]);
+                reader.readAsDataURL(file);
             } else {
-                sendProcess();
+                // Tidak ada file baru yang dipilih (misal saat edit tanpa mengganti file)
+                sendProcess('', existingName);
             }
         }
 
@@ -6378,22 +6788,135 @@
             }
         }
 
-        function openModalDetailMading(idx) {
-            const item = currentAnnouncementsList[idx];
+        function openModalDetailMadingFromAdmin(idx) {
+            const list = (currentAdminAnnouncementsList && currentAdminAnnouncementsList.length > 0) ? currentAdminAnnouncementsList : currentAnnouncementsList;
+            openModalDetailMading(idx, list);
+        }
+
+        function openModalDetailMading(idx, customList = null) {
+            const list = customList || currentAnnouncementsList;
+            const item = list && list[idx];
             if (!item) return;
 
             document.getElementById('md-detail-judul').innerText = item.judul;
             document.getElementById('md-detail-pembuat').innerHTML = '<i class="fa-solid fa-user-pen mr-1"></i> ' + (item.pembuat || 'Admin HR');
             document.getElementById('md-detail-tanggal').innerHTML = '<i class="fa-solid fa-calendar mr-1"></i> ' + item.tanggal_post;
-            document.getElementById('md-detail-isi').innerText = item.isi_pengumuman;
 
-            const fotoElem = document.getElementById('md-detail-foto');
-            fotoElem.src = item.foto_pengumuman || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600';
+            // Render isi pengumuman dengan AUTO-LINK HYPERLINK PARSER
+            document.getElementById('md-detail-isi').innerHTML = formatMadingText(item.isi_pengumuman);
+
+            const tipe = (item.tipe_lampiran || 'FOTO').toUpperCase();
+            const mediaUrl = item.foto_pengumuman || '';
+
+            // Elemen sub-wrapper media
+            const wrapFoto = document.getElementById('md-media-foto-wrap');
+            const wrapVideo = document.getElementById('md-media-video-wrap');
+            const wrapIframe = document.getElementById('md-media-iframe-wrap');
+            const wrapDoc = document.getElementById('md-media-dokumen-wrap');
+            const wrapLink = document.getElementById('md-media-link-wrap');
+            const actionSlot = document.getElementById('md-detail-action-slot');
+            const iconTipeBox = document.getElementById('md-detail-icon-tipe');
+            const badgeTipe = document.getElementById('md-detail-badge-tipe');
+
+            // Reset media state
+            wrapFoto.classList.add('hidden');
+            wrapVideo.classList.add('hidden');
+            wrapIframe.classList.add('hidden');
+            wrapDoc.classList.add('hidden');
+            wrapLink.classList.add('hidden');
+
+            const videoPlayer = document.getElementById('md-detail-video-player');
+            if (videoPlayer) {
+                videoPlayer.pause();
+                videoPlayer.src = '';
+            }
+            const videoIframe = document.getElementById('md-detail-video-iframe');
+            if (videoIframe) {
+                videoIframe.src = '';
+            }
+
+            if (tipe === 'VIDEO') {
+                iconTipeBox.className = 'w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-sm font-bold';
+                iconTipeBox.innerHTML = '<i class="fa-solid fa-video"></i>';
+                badgeTipe.className = 'inline-block mt-0.5 text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800';
+                badgeTipe.innerText = 'Video Pengumuman';
+
+                const ytId = getYouTubeVideoId(mediaUrl);
+                if (ytId) {
+                    wrapIframe.classList.remove('hidden');
+                    videoIframe.src = 'https://www.youtube.com/embed/' + ytId + '?autoplay=0';
+                    actionSlot.innerHTML = '<a href="' + mediaUrl + '" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"><i class="fa-brands fa-youtube"></i> Tonton di YouTube</a>';
+                } else if (mediaUrl.includes('drive.google.com')) {
+                    wrapIframe.classList.remove('hidden');
+                    let drivePreview = mediaUrl;
+                    if (drivePreview.includes('/view')) drivePreview = drivePreview.replace('/view', '/preview');
+                    videoIframe.src = drivePreview;
+                    actionSlot.innerHTML = '<a href="' + mediaUrl + '" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka di Drive</a>';
+                } else {
+                    wrapVideo.classList.remove('hidden');
+                    videoPlayer.src = mediaUrl;
+                    actionSlot.innerHTML = '<a href="' + mediaUrl + '" target="_blank" download="Mading_Video_' + Date.now() + '.mp4" class="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"><i class="fa-solid fa-download"></i> Unduh Video</a>';
+                }
+            } else if (tipe === 'DOKUMEN') {
+                iconTipeBox.className = 'w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-sm font-bold';
+                iconTipeBox.innerHTML = '<i class="fa-solid fa-file-lines"></i>';
+                badgeTipe.className = 'inline-block mt-0.5 text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800';
+                badgeTipe.innerText = 'Dokumen Resmi';
+
+                const docMeta = getDocumentMeta(item.nama_lampiran || mediaUrl);
+                wrapDoc.classList.remove('hidden');
+                document.getElementById('md-doc-icon-box').className = 'w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ' + docMeta.color;
+                document.getElementById('md-doc-icon-box').innerHTML = '<i class="fa-solid ' + docMeta.icon + '"></i>';
+                document.getElementById('md-doc-name').innerText = item.nama_lampiran || 'Lampiran_Dokumen_Balcone';
+                document.getElementById('md-doc-download-btn').href = mediaUrl || '#';
+
+                actionSlot.innerHTML = '<a href="' + mediaUrl + '" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Dokumen</a>';
+            } else if (tipe === 'LINK') {
+                iconTipeBox.className = 'w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-sm font-bold';
+                iconTipeBox.innerHTML = '<i class="fa-solid fa-link"></i>';
+                badgeTipe.className = 'inline-block mt-0.5 text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800';
+                badgeTipe.innerText = 'Tautan Web';
+
+                wrapLink.classList.remove('hidden');
+                document.getElementById('md-link-label').innerText = item.nama_lampiran || 'Tautan Eksternal Balcone';
+                document.getElementById('md-link-url-text').innerText = mediaUrl;
+                document.getElementById('md-link-visit-btn').href = mediaUrl || '#';
+
+                actionSlot.innerHTML = '<a href="' + mediaUrl + '" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"><i class="fa-solid fa-arrow-up-right-from-square"></i> Kunjungi Tautan</a>';
+            } else if (tipe === 'NONE') {
+                iconTipeBox.className = 'w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold';
+                iconTipeBox.innerHTML = '<i class="fa-solid fa-bullhorn"></i>';
+                badgeTipe.className = 'inline-block mt-0.5 text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700';
+                badgeTipe.innerText = 'Pengumuman Teks';
+
+                actionSlot.innerHTML = '<span class="text-[11px] text-slate-400 font-semibold"><i class="fa-solid fa-check-double text-indigo-500 mr-1"></i>Pengumuman Resmi Resort</span>';
+            } else {
+                // Default FOTO
+                iconTipeBox.className = 'w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold';
+                iconTipeBox.innerHTML = '<i class="fa-solid fa-image"></i>';
+                badgeTipe.className = 'inline-block mt-0.5 text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800';
+                badgeTipe.innerText = 'Poster / Foto';
+
+                wrapFoto.classList.remove('hidden');
+                const fotoElem = document.getElementById('md-detail-foto');
+                fotoElem.src = mediaUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600';
+
+                actionSlot.innerHTML = '<button onclick="downloadMadingImage(event)" class="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"><i class="fa-solid fa-download"></i> Unduh Foto Mading</button>';
+            }
 
             document.getElementById('modal-mading-detail').classList.remove('hidden');
         }
 
         function closeModalDetailMading() {
+            const videoPlayer = document.getElementById('md-detail-video-player');
+            if (videoPlayer) {
+                videoPlayer.pause();
+                videoPlayer.src = '';
+            }
+            const videoIframe = document.getElementById('md-detail-video-iframe');
+            if (videoIframe) {
+                videoIframe.src = '';
+            }
             document.getElementById('modal-mading-detail').classList.add('hidden');
         }
 

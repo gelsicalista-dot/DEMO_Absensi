@@ -101,7 +101,7 @@ function doPost(e) {
     } else if (action === 'generateHODAttendancePDFReport') {
       result = generateHODAttendancePDFReport(payload[0], payload[1], payload[2], payload[3]);
     } else if (action === 'savePengumuman') {
-      result = savePengumuman(payload[0], payload[1], payload[2], payload[3], payload[4]);
+      result = savePengumuman(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5], payload[6]);
     } else if (action === 'deletePengumuman') {
       result = deletePengumuman(payload[0]);
     } else if (action === 'getShiftList') {
@@ -201,7 +201,7 @@ function setupDatabase() {
       'total_terlambat', 'total_menit_terlambat', 'total_izin', 'skor_kpi_persen', 'predikat'
     ],
     [CONFIG.SHEET_PENGUMUMAN]: [
-      'id_pengumuman', 'tanggal_post', 'judul', 'isi_pengumuman', 'foto_pengumuman', 'pembuat', 'status_aktif'
+      'id_pengumuman', 'tanggal_post', 'judul', 'isi_pengumuman', 'foto_pengumuman', 'pembuat', 'status_aktif', 'tipe_lampiran', 'nama_lampiran'
     ],
     [CONFIG.SHEET_PENGATURAN]: [
       'koordinat_kantor_lat', 'koordinat_kantor_long', 'radius_meter', 'qr_secret_code', 'default_kuota_cuti', 'pin_payroll', 'rate_denda_per_menit_default'
@@ -2287,16 +2287,80 @@ function deleteDepartemen(idDept) {
   }
 }
 
-function savePengumuman(idPengumuman, judul, isi, status, fotoBase64) {
+function uploadMadingFileToDrive(base64Data, filename) {
+  try {
+    if (!base64Data || typeof base64Data !== 'string' || !base64Data.includes('base64,')) {
+      return '';
+    }
+
+    const parts = base64Data.split('base64,');
+    const header = parts[0];
+    const rawBase64 = parts[1];
+
+    let contentType = 'application/octet-stream';
+    const mimeMatch = header.match(/data:([^;]+);/);
+    if (mimeMatch && mimeMatch[1]) {
+      contentType = mimeMatch[1];
+    }
+
+    const decoded = Utilities.base64Decode(rawBase64);
+    const blob = Utilities.newBlob(decoded, contentType, filename || ('Mading_' + Date.now()));
+
+    const folderName = 'Balcone_Mading_Media';
+    const folders = DriveApp.getFoldersByName(folderName);
+    let folder;
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder(folderName);
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const fileId = file.getId();
+
+    // Jika gambar, kembalikan CDN direct thumbnail Google
+    if (contentType.indexOf('image/') === 0) {
+      return 'https://lh3.googleusercontent.com/d/' + fileId;
+    }
+    // Jika video, URL preview Drive dapat disematkan di iframe/player
+    if (contentType.indexOf('video/') === 0) {
+      return 'https://drive.google.com/file/d/' + fileId + '/preview';
+    }
+    // Jika dokumen (PDF, Word, Excel, PPT, dll), URL view/download Drive
+    return 'https://drive.google.com/file/d/' + fileId + '/view?usp=drivesdk';
+  } catch (err) {
+    Logger.log('Gagal upload berkas Mading ke Drive: ' + err.toString());
+    return '';
+  }
+}
+
+function savePengumuman(idPengumuman, judul, isi, status, fileData, tipeLampiran, namaLampiran) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_PENGUMUMAN);
     const list = getSheetDataAsObjects(CONFIG.SHEET_PENGUMUMAN) || [];
     const todayStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy');
 
-    let photoUrl = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600';
-    if (fotoBase64 && fotoBase64.includes('base64,')) {
-      photoUrl = uploadFotoToDrive(fotoBase64, 'Mading_' + Date.now());
+    tipeLampiran = tipeLampiran || 'FOTO';
+    namaLampiran = namaLampiran || '';
+
+    // Pastikan header kolom ke-8 dan ke-9 tersedia pada lembar kerja (Safe Migration)
+    if (sheet) {
+      const lastCol = sheet.getLastColumn();
+      if (lastCol < 9) {
+        if (lastCol < 8) sheet.getRange(1, 8).setValue('tipe_lampiran');
+        sheet.getRange(1, 9).setValue('nama_lampiran');
+        sheet.getRange(1, 8, 1, 2).setFontWeight('bold').setBackground('#1E3A8A').setFontColor('#FFFFFF');
+      }
+    }
+
+    let fileUrl = '';
+    if (fileData && typeof fileData === 'string' && fileData.indexOf('base64,') !== -1) {
+      fileUrl = uploadMadingFileToDrive(fileData, namaLampiran || ('Mading_' + Date.now()));
+    } else if (fileData && typeof fileData === 'string' && (fileData.indexOf('http://') === 0 || fileData.indexOf('https://') === 0)) {
+      fileUrl = fileData.trim();
     }
 
     if (idPengumuman) {
@@ -2305,14 +2369,23 @@ function savePengumuman(idPengumuman, judul, isi, status, fotoBase64) {
         const row = idx + 2;
         sheet.getRange(row, 3).setValue(judul);
         sheet.getRange(row, 4).setValue(isi);
-        if (fotoBase64 && fotoBase64.includes('base64,')) {
-          sheet.getRange(row, 5).setValue(photoUrl);
+        if (fileUrl) {
+          sheet.getRange(row, 5).setValue(fileUrl);
         }
         sheet.getRange(row, 7).setValue(status);
+        if (tipeLampiran) {
+          sheet.getRange(row, 8).setValue(tipeLampiran);
+        }
+        if (namaLampiran) {
+          sheet.getRange(row, 9).setValue(namaLampiran);
+        }
       }
     } else {
       const newId = 'PGM-' + Date.now().toString().slice(-5);
-      sheet.appendRow([newId, todayStr, judul, isi, photoUrl, 'Admin HR', status || 'Aktif']);
+      if (!fileUrl && tipeLampiran === 'FOTO') {
+        fileUrl = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600';
+      }
+      sheet.appendRow([newId, todayStr, judul, isi, fileUrl, 'Admin HR', status || 'Aktif', tipeLampiran, namaLampiran]);
     }
 
     SpreadsheetApp.flush();
