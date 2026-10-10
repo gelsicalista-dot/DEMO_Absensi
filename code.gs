@@ -88,6 +88,10 @@ function doPost(e) {
       result = approveIzinCuti(payload[0], payload[1], payload[2]);
     } else if (action === 'calculateMonthlyKPI') {
       result = calculateMonthlyKPI(payload[0]);
+    } else if (action === 'getAttendanceAndLeaveResume') {
+      result = getAttendanceAndLeaveResume(payload[0], payload[1], payload[2]);
+    } else if (action === 'generateResumeAttendancePDFReport') {
+      result = generateResumeAttendancePDFReport(payload[0], payload[1], payload[2]);
     } else if (action === 'getGlobalAttendanceList') {
       result = getGlobalAttendanceList(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
     } else if (action === 'generateAttendancePDFReport') {
@@ -2381,6 +2385,403 @@ function calculateMonthlyKPI(bulanTahun) {
     });
 
     return { success: true, data: kpiResults };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
+  try {
+    const employeesAll = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    let karyawan = employeesAll.filter(k => {
+      if (!k) return false;
+      const roleStr = (k.role || '').toString().toLowerCase();
+      return k.status_akun === 'Approved' && !roleStr.includes('admin');
+    });
+
+    if (filterDept && filterDept !== 'ALL') {
+      karyawan = karyawan.filter(k => k.departemen === filterDept);
+    }
+
+    // Default ke cutoff berjalan jika kosong
+    if (!startDate || !endDate) {
+      const now = new Date();
+      let y = now.getFullYear();
+      let m = now.getMonth() + 1;
+      const mStr = y + '-' + String(m).padStart(2, '0');
+      const cut = getCutoffRange(mStr);
+      if (!startDate) startDate = Utilities.formatDate(cut.startDate, 'Asia/Jakarta', 'yyyy-MM-dd');
+      if (!endDate) endDate = Utilities.formatDate(cut.endDate, 'Asia/Jakarta', 'yyyy-MM-dd');
+    }
+
+    let startYMD = normalizeDateToYMD(startDate);
+    let endYMD = normalizeDateToYMD(endDate);
+    if (startYMD && endYMD && startYMD > endYMD) {
+      const t = startYMD;
+      startYMD = endYMD;
+      endYMD = t;
+      const tStr = startDate;
+      startDate = endDate;
+      endDate = tStr;
+    }
+
+    const absensiAll = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
+    const rosterAll = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
+    const izinAll = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+
+    // Filter absensi dalam rentang
+    const absensiInRange = absensiAll.filter(a => a && a.tanggal && isDateInRange(a.tanggal, startDate, endDate));
+
+    // Filter roster dalam rentang
+    const rosterInRange = rosterAll.filter(r => r && r.tanggal && isDateInRange(r.tanggal, startDate, endDate));
+
+    // Filter izin yang disetujui (Approved / Approved_HOD)
+    const approvedIzin = izinAll.filter(iz => {
+      if (!iz) return false;
+      const st = (iz.status_persetujuan || '').toString();
+      if (st !== 'Approved' && st !== 'Approved_HOD') return false;
+      
+      const izStartYMD = normalizeDateToYMD(iz.tanggal_mulai);
+      const izEndYMD = normalizeDateToYMD(iz.tanggal_selesai || iz.tanggal_mulai);
+      if (!izStartYMD) return false;
+      
+      return izStartYMD <= endYMD && (izEndYMD ? izEndYMD >= startYMD : izStartYMD >= startYMD);
+    });
+
+    // 1. Kumpulkan Detail Pengambilan Cuti/Izin
+    const leaveDetails = [];
+    const leaveStats = {
+      cutiTahunan: 0,
+      publikHoliday: 0,
+      extraOff: 0,
+      cutiKhusus: 0,
+      sakit: 0,
+      izin: 0,
+      izinJam: 0,
+      totalHari: 0
+    };
+
+    approvedIzin.forEach(iz => {
+      const emp = employeesAll.find(e => e && e.nik === iz.nik);
+      if (filterDept && filterDept !== 'ALL' && emp && emp.departemen !== filterDept) return;
+
+      const jenisLower = (iz.jenis || '').toString().toLowerCase();
+      let kategoriKode = 'I';
+      let kategoriLabel = iz.jenis || 'Izin';
+      let daysCount = parseFloat(iz.jumlah_hari || '1') || 1;
+
+      if (jenisLower.includes('tahunan') || jenisLower === 'ct') {
+        kategoriKode = 'CT';
+        kategoriLabel = 'Cuti Tahunan (CT)';
+        leaveStats.cutiTahunan += daysCount;
+      } else if (jenisLower.includes('publik') || jenisLower.includes('public') || jenisLower === 'ph') {
+        kategoriKode = 'PH';
+        kategoriLabel = 'Publik Holiday (PH)';
+        leaveStats.publikHoliday += daysCount;
+      } else if (jenisLower.includes('extra') || jenisLower === 'eo') {
+        kategoriKode = 'EO';
+        kategoriLabel = 'Extra Off (EO)';
+        leaveStats.extraOff += daysCount;
+      } else if (jenisLower.includes('khusus') || jenisLower.includes('lainnya') || jenisLower === 'ck') {
+        kategoriKode = 'CK';
+        kategoriLabel = 'Cuti Khusus (CK)';
+        leaveStats.cutiKhusus += daysCount;
+      } else if (jenisLower.includes('sakit') || jenisLower === 's') {
+        kategoriKode = 'S';
+        kategoriLabel = 'Sakit (S)';
+        leaveStats.sakit += daysCount;
+      } else if (jenisLower.includes('jam')) {
+        kategoriKode = 'IJ';
+        kategoriLabel = 'Izin Jam-Jaman';
+        leaveStats.izinJam += 1;
+      } else {
+        kategoriKode = 'I';
+        kategoriLabel = 'Izin (I)';
+        leaveStats.izin += daysCount;
+      }
+      leaveStats.totalHari += daysCount;
+
+      leaveDetails.push({
+        id_izin: iz.id_izin || '-',
+        nik: iz.nik,
+        nama: emp ? emp.nama : (iz.nama || 'N/A'),
+        departemen: emp ? emp.departemen : '-',
+        jenis: kategoriLabel,
+        kategori_kode: kategoriKode,
+        tanggal_mulai: iz.tanggal_mulai || '-',
+        tanggal_selesai: iz.tanggal_selesai || iz.tanggal_mulai || '-',
+        jumlah_hari: iz.jumlah_hari || '1',
+        alasan: iz.alasan || '-',
+        status: iz.status_persetujuan || 'Approved'
+      });
+    });
+
+    leaveDetails.reverse();
+
+    // 2. Hitung Persentase Kehadiran per Karyawan (Target KPI 100%)
+    let totalScheduledResort = 0;
+    let totalHadirResort = 0;
+
+    const employeeAttendance = karyawan.map(emp => {
+      const empNik = String(emp.nik).trim();
+      
+      const empAbsensi = absensiInRange.filter(a => a && String(a.nik).trim() === empNik);
+      const totalHadir = empAbsensi.filter(a => a.status === 'Tepat Waktu' || a.status === 'Terlambat' || (a.status || '').includes('Hadir') || (a.status || '').includes('Dispensasi')).length;
+      const totalTerlambat = empAbsensi.filter(a => a.status === 'Terlambat').length;
+      let totalMenitTerlambat = 0;
+      empAbsensi.forEach(a => {
+        totalMenitTerlambat += parseInt(a.keterlambatan_menit || '0', 10);
+      });
+
+      const empRoster = rosterInRange.filter(r => r && String(r.nik).trim() === empNik);
+      
+      let hariWajibKerja = 0;
+      let hariOff = 0;
+      let hariCuti = 0;
+
+      if (empRoster.length > 0) {
+        empRoster.forEach(r => {
+          const shiftVal = (r.id_shift || r.status_hari || '').toString().trim();
+          if (shiftVal === 'OFF') {
+            hariOff++;
+          } else if (['CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
+            hariCuti++;
+          } else if (shiftVal !== '') {
+            hariWajibKerja++;
+          }
+        });
+      } else {
+        hariWajibKerja = Math.max(totalHadir, 1);
+      }
+
+      const empIzinDays = leaveDetails
+        .filter(ld => String(ld.nik).trim() === empNik && ld.kategori_kode !== 'IJ')
+        .reduce((sum, ld) => sum + (parseFloat(ld.jumlah_hari) || 1), 0);
+
+      let persenKehadiran = 100;
+      if (hariWajibKerja > 0) {
+        persenKehadiran = Math.min(100, Math.round((totalHadir / hariWajibKerja) * 1000) / 10);
+      } else {
+        persenKehadiran = 100;
+      }
+
+      totalScheduledResort += hariWajibKerja;
+      totalHadirResort += totalHadir;
+
+      let statusKPI = '100% (Mencapai Target)';
+      let statusColor = 'emerald';
+      if (persenKehadiran >= 100) {
+        statusKPI = '100% (Mencapai Target)';
+        statusColor = 'emerald';
+      } else if (persenKehadiran >= 90) {
+        statusKPI = persenKehadiran + '% (Baik)';
+        statusColor = 'indigo';
+      } else if (persenKehadiran >= 80) {
+        statusKPI = persenKehadiran + '% (Cukup)';
+        statusColor = 'amber';
+      } else {
+        statusKPI = persenKehadiran + '% (Perlu Evaluasi)';
+        statusColor = 'rose';
+      }
+
+      return {
+        nik: emp.nik,
+        nama: emp.nama,
+        departemen: emp.departemen,
+        hari_wajib: hariWajibKerja,
+        total_hadir: totalHadir,
+        hari_off: hariOff,
+        hari_cuti: Math.max(hariCuti, empIzinDays),
+        total_terlambat: totalTerlambat,
+        menit_terlambat: totalMenitTerlambat,
+        persen_kehadiran: persenKehadiran,
+        status_kpi: statusKPI,
+        status_color: statusColor
+      };
+    });
+
+    employeeAttendance.sort((a, b) => a.nama.localeCompare(b.nama));
+
+    let rataRataResort = 100;
+    if (totalScheduledResort > 0) {
+      rataRataResort = Math.min(100, Math.round((totalHadirResort / totalScheduledResort) * 1000) / 10);
+    }
+
+    return {
+      success: true,
+      startDate: startDate,
+      endDate: endDate,
+      filterDept: filterDept || 'ALL',
+      summary: {
+        totalKaryawan: karyawan.length,
+        rataRataKehadiran: rataRataResort,
+        targetKPI: 100,
+        totalHariWajib: totalScheduledResort,
+        totalHadirRiil: totalHadirResort,
+        leaveStats: leaveStats
+      },
+      employeeAttendance: employeeAttendance,
+      leaveDetails: leaveDetails
+    };
+  } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
+  try {
+    const resumeRes = getAttendanceAndLeaveResume(startDate, endDate, filterDept);
+    if (!resumeRes || !resumeRes.success) {
+      return { success: false, message: resumeRes ? resumeRes.message : 'Gagal menghasilkan resume.' };
+    }
+
+    const startStr = resumeRes.startDate;
+    const endStr = resumeRes.endDate;
+    const deptStr = resumeRes.filterDept || 'ALL';
+    const s = resumeRes.summary;
+    const empAtt = resumeRes.employeeAttendance || [];
+    const leaveDet = resumeRes.leaveDetails || [];
+
+    const dispStart = formatDisplayDateID(startStr);
+    const dispEnd = formatDisplayDateID(endStr);
+    const deptLabel = (deptStr !== 'ALL') ? deptStr : 'Semua Departemen';
+
+    let html = '<div style="font-family:Arial, sans-serif; padding:15px; color:#1e293b; font-size:10px;">';
+    
+    // Header
+    html += '<h2 style="text-align:center; color:#1e1b4b; margin:0 0 4px 0; font-size:15px; letter-spacing:0.5px;">THE BALCONE SUITES & RESORT</h2>';
+    html += '<h4 style="text-align:center; color:#4338ca; margin:0 0 4px 0; font-size:12px; text-transform:uppercase;">RESUME EVALUASI KEHADIRAN & PENGAMBILAN CUTI KARYAWAN</h4>';
+    html += '<p style="text-align:center; font-size:10px; color:#64748b; margin:0 0 14px 0;">' +
+      'Periode: <b>' + dispStart + ' s/d ' + dispEnd + '</b> &bull; Departemen: <b>' + deptLabel + '</b>' +
+      '</p>';
+
+    // Summary Box
+    html += '<div style="background-color:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; margin-bottom:15px;">';
+    html += '<table style="width:100%; font-size:9.5px; border-collapse:collapse;">';
+    html += '<tr>' +
+      '<td style="width:25%; padding:4px;"><b>Total Karyawan:</b> ' + s.totalKaryawan + ' Orang</td>' +
+      '<td style="width:25%; padding:4px;"><b>Rata-rata Kehadiran:</b> <span style="color:#059669; font-weight:bold;">' + s.rataRataKehadiran + '%</span> (Target: 100%)</td>' +
+      '<td style="width:25%; padding:4px;"><b>Hari Kerja Terjadwal:</b> ' + s.totalHariWajib + ' Hari</td>' +
+      '<td style="width:25%; padding:4px;"><b>Total Hadir Riil:</b> ' + s.totalHadirRiil + ' Hari</td>' +
+      '</tr>';
+    html += '<tr>' +
+      '<td colspan="4" style="padding:6px 4px 2px 4px; border-top:1px dashed #cbd5e1; color:#475569;">' +
+      '<b>Rekapitulasi Cuti & Izin Diambil:</b> ' +
+      'Cuti Tahunan (CT): <b>' + s.leaveStats.cutiTahunan + '</b> Hr &bull; ' +
+      'Public Holiday (PH): <b>' + s.leaveStats.publikHoliday + '</b> Hr &bull; ' +
+      'Extra Off (EO): <b>' + s.leaveStats.extraOff + '</b> Hr &bull; ' +
+      'Cuti Khusus (CK): <b>' + s.leaveStats.cutiKhusus + '</b> Hr &bull; ' +
+      'Sakit: <b>' + s.leaveStats.sakit + '</b> Hr &bull; ' +
+      'Izin/Jam: <b>' + (s.leaveStats.izin + s.leaveStats.izinJam) + '</b> Hr &bull; ' +
+      'Total: <b style="color:#4338ca;">' + s.leaveStats.totalHari + ' Hari</b>' +
+      '</td>' +
+      '</tr>';
+    html += '</table></div>';
+
+    // Bagian 1: Tabel Persentase Kehadiran
+    html += '<h4 style="color:#1e1b4b; margin:12px 0 6px 0; font-size:10.5px; text-transform:uppercase;">1. Persentase Kehadiran Karyawan (Target KPI: 100%)</h4>';
+    html += '<table border="1" cellpadding="4" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:9px; border-color:#cbd5e1; margin-bottom:15px;">';
+    html += '<tr style="background-color:#1e1b4b; color:white; font-size:8.5px; text-transform:uppercase;">' +
+      '<th style="width:20px; text-align:center;">No</th>' +
+      '<th style="width:70px;">NIK</th>' +
+      '<th>Nama Karyawan</th>' +
+      '<th>Departemen</th>' +
+      '<th style="width:55px; text-align:center;">Wajib (Hr)</th>' +
+      '<th style="width:55px; text-align:center;">Hadir (Hr)</th>' +
+      '<th style="width:50px; text-align:center;">Terlambat</th>' +
+      '<th style="width:65px; text-align:center;">% Kehadiran</th>' +
+      '<th style="width:85px; text-align:center;">Status KPI</th>' +
+      '</tr>';
+
+    if (empAtt.length === 0) {
+      html += '<tr><td colspan="9" style="text-align:center; padding:10px; color:#94a3b8;">Tidak ada data karyawan.</td></tr>';
+    } else {
+      empAtt.forEach((emp, idx) => {
+        const bgRow = (idx % 2 === 1) ? '#f8fafc' : '#ffffff';
+        const pctColor = emp.persen_kehadiran >= 100 ? '#059669' : (emp.persen_kehadiran >= 85 ? '#2563eb' : '#dc2626');
+        html += '<tr style="background-color:' + bgRow + ';">' +
+          '<td style="text-align:center;">' + (idx + 1) + '</td>' +
+          '<td style="font-family:monospace; font-weight:bold; color:#312e81;">' + emp.nik + '</td>' +
+          '<td style="font-weight:bold;">' + emp.nama + '</td>' +
+          '<td>' + emp.departemen + '</td>' +
+          '<td style="text-align:center;">' + emp.hari_wajib + '</td>' +
+          '<td style="text-align:center; font-weight:bold; color:#059669;">' + emp.total_hadir + '</td>' +
+          '<td style="text-align:center;">' + (emp.total_terlambat > 0 ? emp.total_terlambat + 'x (' + emp.menit_terlambat + 'm)' : '-') + '</td>' +
+          '<td style="text-align:center; font-weight:bold; color:' + pctColor + ';">' + emp.persen_kehadiran + '%</td>' +
+          '<td style="text-align:center; font-size:8px;">' + emp.status_kpi + '</td>' +
+          '</tr>';
+      });
+    }
+    html += '</table>';
+
+    // Bagian 2: Tabel Pengambilan Cuti & Izin
+    html += '<h4 style="color:#1e1b4b; margin:14px 0 6px 0; font-size:10.5px; text-transform:uppercase;">2. Detail Pengambilan Cuti, Public Holiday, Extra Off & Izin</h4>';
+    html += '<table border="1" cellpadding="4" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:9px; border-color:#cbd5e1; margin-bottom:15px;">';
+    html += '<tr style="background-color:#312e81; color:white; font-size:8.5px; text-transform:uppercase;">' +
+      '<th style="width:20px; text-align:center;">No</th>' +
+      '<th style="width:70px;">NIK</th>' +
+      '<th>Nama Karyawan</th>' +
+      '<th>Departemen</th>' +
+      '<th>Jenis Cuti / Izin</th>' +
+      '<th style="text-align:center;">Periode / Tanggal</th>' +
+      '<th style="width:45px; text-align:center;">Durasi</th>' +
+      '<th>Alasan / Keterangan</th>' +
+      '<th style="width:60px; text-align:center;">Status</th>' +
+      '</tr>';
+
+    if (leaveDet.length === 0) {
+      html += '<tr><td colspan="9" style="text-align:center; padding:10px; color:#94a3b8;">Tidak ada pengambilan cuti/izin pada periode ini.</td></tr>';
+    } else {
+      leaveDet.forEach((ld, idx) => {
+        const bgRow = (idx % 2 === 1) ? '#f8fafc' : '#ffffff';
+        const tglStr = (ld.tanggal_mulai === ld.tanggal_selesai) ? ld.tanggal_mulai : (ld.tanggal_mulai + ' s/d ' + ld.tanggal_selesai);
+        html += '<tr style="background-color:' + bgRow + ';">' +
+          '<td style="text-align:center;">' + (idx + 1) + '</td>' +
+          '<td style="font-family:monospace; font-weight:bold; color:#312e81;">' + ld.nik + '</td>' +
+          '<td style="font-weight:bold;">' + ld.nama + '</td>' +
+          '<td>' + ld.departemen + '</td>' +
+          '<td style="font-weight:bold; color:#4338ca;">' + ld.jenis + '</td>' +
+          '<td style="text-align:center; font-size:8.5px;">' + tglStr + '</td>' +
+          '<td style="text-align:center; font-weight:bold;">' + ld.jumlah_hari + ' Hari</td>' +
+          '<td>' + ld.alasan + '</td>' +
+          '<td style="text-align:center; font-size:8px; color:#059669; font-weight:bold;">' + ld.status + '</td>' +
+          '</tr>';
+      });
+    }
+    html += '</table>';
+
+    // Kolom Tanda Tangan
+    html += '<table style="width:100%; margin-top:25px; font-size:9.5px; border-collapse:collapse; page-break-inside:avoid;">';
+    html += '<tr>' +
+      '<td style="width:40%; text-align:center;">' +
+      'Dibuat Oleh,<br><br><br><br>' +
+      '<b>( HR Officer )</b><br>' +
+      'Personnel & Attendance' +
+      '</td>' +
+      '<td style="width:20%;"></td>' +
+      '<td style="width:40%; text-align:center;">' +
+      'Mengetahui & Menyetujui,<br><br><br><br>' +
+      '<b>( General Manager / HR Manager )</b><br>' +
+      'The Balcone Suites & Resort' +
+      '</td>' +
+      '</tr>';
+    html += '</table>';
+
+    html += '<p style="text-align:right; font-size:8.5px; color:#94a3b8; margin-top:15px;">Dicetak otomatis oleh Sistem HR The Balcone Suites & Resort pada ' + (new Date().toLocaleString('id-ID')) + '</p>';
+    html += '</div>';
+
+    let periodSuffix = startStr + '_sd_' + endStr;
+    const safeDeptStr = (deptStr !== 'ALL') ? deptStr + '_' : '';
+    const safeFileTitle = ('Resume_Kehadiran_Cuti_Balcone_' + safeDeptStr + periodSuffix).replace(/[^a-zA-Z0-9]/g, '_');
+    const blob = Utilities.newBlob(html, 'text/html', safeFileTitle + '.html');
+    const pdfBlob = blob.getAs('application/pdf');
+    const base64Pdf = Utilities.base64Encode(pdfBlob.getBytes());
+
+    return {
+      success: true,
+      pdfBase64: 'data:application/pdf;base64,' + base64Pdf,
+      fileName: safeFileTitle + '.pdf'
+    };
   } catch (err) {
     return { success: false, message: err.toString() };
   }
