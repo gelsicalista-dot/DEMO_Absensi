@@ -20,7 +20,8 @@ const CONFIG = {
   SHEET_GAJI_MASTER: 'Tabel_Gaji_Master',
   SHEET_PAYROLL_BULANAN: 'Tabel_Payroll_Bulanan',
   SHEET_PINJAMAN: 'Tabel_Pinjaman_Karyawan',
-  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift'
+  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift',
+  SHEET_RESET_DEVICE: 'Tabel_Reset_Perangkat'
 };
 
 /**
@@ -68,6 +69,12 @@ function doPost(e) {
       result = loginUser(payload[0], payload[1], payload[2]);
     } else if (action === 'resetDeviceLock') {
       result = resetDeviceLock(payload[0]);
+    } else if (action === 'requestDeviceReset') {
+      result = requestDeviceReset(payload[0], payload[1], payload[2]);
+    } else if (action === 'approveDeviceReset') {
+      result = approveDeviceReset(payload[0], payload[1]);
+    } else if (action === 'syncOfflineAttendance') {
+      result = syncOfflineAttendance(payload[0]);
     } else if (action === 'registerKaryawan') {
       result = registerKaryawan(payload[0]);
     } else if (action === 'approveKaryawan') {
@@ -75,7 +82,7 @@ function doPost(e) {
     } else if (action === 'setEmployeeResign') {
       result = setEmployeeResign(payload[0], payload[1], payload[2]);
     } else if (action === 'processAbsensi') {
-      result = processAbsensi(payload[0], payload[1], payload[2], payload[3], payload[4]);
+      result = processAbsensi(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
     } else if (action === 'getKaryawanDashboard') {
       result = getKaryawanDashboard(payload[0], payload[1]);
     } else if (action === 'getHODDashboard') {
@@ -616,6 +623,81 @@ function getTodayBirthdaysList() {
   }
 }
 
+function getOrCreateResetDeviceSheet(ss) {
+  let sheet = ss.getSheetByName(CONFIG.SHEET_RESET_DEVICE);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_RESET_DEVICE);
+    sheet.appendRow(['id_request', 'nik', 'nama', 'alasan', 'tanggal_request', 'status', 'hardware_info']);
+    SpreadsheetApp.flush();
+  }
+  return sheet;
+}
+
+function requestDeviceReset(nik, alasan, hwInfo) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const emp = employees.find(e => e && e.nik === nik);
+    if (!emp) return { success: false, message: 'Data karyawan dengan NIK ' + nik + ' tidak ditemukan.' };
+
+    const sheetReset = getOrCreateResetDeviceSheet(ss);
+    const existing = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
+    const pendingReq = existing.find(r => r && r.nik === nik && r.status === 'Pending');
+    if (pendingReq) {
+      return { success: true, message: 'Pengajuan reset perangkat Anda sudah tercatat dan sedang menunggu verifikasi Admin HR.' };
+    }
+
+    const newId = 'RST-' + Date.now().toString().slice(-6);
+    const tglStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
+    sheetReset.appendRow([
+      newId,
+      nik,
+      emp.nama || 'N/A',
+      alasan || 'Ganti smartphone / reset browser',
+      tglStr,
+      'Pending',
+      hwInfo || ''
+    ]);
+    SpreadsheetApp.flush();
+
+    return { 
+      success: true, 
+      message: 'Permohonan reset perangkat berhasil dikirim ke Admin HR! Silakan tunggu konfirmasi Admin.' 
+    };
+  } catch (err) {
+    return { success: false, message: 'Gagal mengajukan permohonan reset: ' + err.toString() };
+  }
+}
+
+function approveDeviceReset(idRequest, isApproved) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetReset = getOrCreateResetDeviceSheet(ss);
+    const requests = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
+    const index = requests.findIndex(r => r && (r.id_request === idRequest || r.nik === idRequest));
+    if (index === -1) return { success: false, message: 'Data pengajuan reset tidak ditemukan.' };
+
+    const req = requests[index];
+    const rowNum = index + 2;
+    const newStatus = isApproved ? 'Approved' : 'Rejected';
+    sheetReset.getRange(rowNum, 6).setValue(newStatus);
+    SpreadsheetApp.flush();
+
+    if (isApproved) {
+      resetDeviceLock(req.nik);
+    }
+
+    return { 
+      success: true, 
+      message: isApproved 
+        ? 'Permohonan reset perangkat untuk ' + req.nama + ' (' + req.nik + ') disetujui! Kunci perangkat telah dibuka.' 
+        : 'Permohonan reset perangkat ditolak.' 
+    };
+  } catch (err) {
+    return { success: false, message: 'Gagal memproses permohonan: ' + err.toString() };
+  }
+}
+
 function resetDeviceLock(nik) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -698,6 +780,16 @@ function loginUser(noTelp, password, clientDeviceId) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetKaryawan = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
 
+      // Parse token client (UUID + Hardware Fingerprint)
+      const clientParts = clientDeviceId.toString().split(':::');
+      const clientUUID = clientParts[0].trim();
+      const clientHwFp = clientParts.length > 1 ? clientParts[1].trim() : '';
+
+      // Parse registered device token
+      const regParts = registeredDevice.split(':::');
+      const regUUID = regParts[0].trim();
+      const regHwFp = regParts.length > 1 ? regParts[1].trim() : '';
+
       // Jika kolom device_id belum ada / kosong -> Kunci perangkat pertama kali
       if (!registeredDevice) {
         if (sheetKaryawan && userIndex !== -1) {
@@ -711,18 +803,38 @@ function loginUser(noTelp, password, clientDeviceId) {
           sheetKaryawan.getRange(rowNum, devColIndex + 1).setNumberFormat('@').setValue(clientDeviceId);
           SpreadsheetApp.flush();
         }
-      } else if (registeredDevice !== clientDeviceId) {
-        // Perangkat tidak cocok
-        return {
-          success: false,
-          isDeviceLocked: true,
-          message: 'Akses Ditolak: Akun Anda sudah terdaftar di perangkat lain. Silakan hubungi Admin HR untuk membuka kunci perangkat Anda.'
-        };
+      } else {
+        // Evaluasi kecocokan: UUID sama ATAU Hardware Fingerprint sama
+        const isUUIDMatch = (regUUID && clientUUID && regUUID === clientUUID);
+        const isHwMatch = (regHwFp && clientHwFp && regHwFp === clientHwFp);
+
+        if (isUUIDMatch || isHwMatch) {
+          // Self-Healing: Jika UUID terhapus oleh cleaner HP tapi hardware sama persis, perbarui UUID
+          if (!isUUIDMatch && isHwMatch && sheetKaryawan && userIndex !== -1) {
+            const rowNum = userIndex + 2;
+            const headers = sheetKaryawan.getRange(1, 1, 1, Math.max(sheetKaryawan.getLastColumn(), 22)).getDisplayValues()[0];
+            let devColIndex = headers.indexOf('device_id');
+            if (devColIndex !== -1) {
+              sheetKaryawan.getRange(rowNum, devColIndex + 1).setNumberFormat('@').setValue(clientDeviceId);
+              SpreadsheetApp.flush();
+            }
+          }
+        } else {
+          // Benar-benar perangkat lain
+          return {
+            success: false,
+            isDeviceLocked: true,
+            nik: user.nik,
+            nama: user.nama,
+            message: 'Akses Ditolak: Akun Anda sudah terdaftar di perangkat lain. Silakan ajukan reset perangkat ke Admin HR jika Anda berganti smartphone.'
+          };
+        }
       }
     }
 
     return {
       success: true,
+      serverTimestamp: Date.now(),
       user: {
         nik: user.nik,
         nama: user.nama,
@@ -832,7 +944,7 @@ function setEmployeeResign(nik, tglResign, statusKerja) {
   }
 }
 
-function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
+function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlineTimestamp) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetSettings = ss.getSheetByName(CONFIG.SHEET_PENGATURAN);
@@ -861,7 +973,7 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
       };
     }
 
-    const todayDate = new Date();
+    const todayDate = offlineTimestamp ? new Date(Number(offlineTimestamp)) : new Date();
     const todayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
     const isoTodayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'yyyy-MM-dd');
     const timeStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'HH:mm:ss');
@@ -996,6 +1108,36 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
 
   } catch (err) {
     return { success: false, message: 'Gagal memproses absensi: ' + err.toString() };
+  }
+}
+
+function syncOfflineAttendance(items) {
+  try {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return { success: true, syncedCount: 0, totalCount: 0, message: 'Tidak ada data antrean absensi offline.' };
+    }
+    let successCount = 0;
+    let errorMsgs = [];
+    items.forEach(item => {
+      try {
+        const res = processAbsensi(item.nik, item.lat, item.lng, item.qrSecretCode, item.actionType, item.timestamp);
+        if (res && res.success) {
+          successCount++;
+        } else {
+          errorMsgs.push(res ? res.message : 'Gagal');
+        }
+      } catch (e) {
+        errorMsgs.push(e.toString());
+      }
+    });
+    return {
+      success: successCount > 0,
+      syncedCount: successCount,
+      totalCount: items.length,
+      message: successCount + ' dari ' + items.length + ' absensi offline berhasil disinkronkan ke server.' + (errorMsgs.length > 0 ? ' (' + errorMsgs[0] + ')' : '')
+    };
+  } catch (err) {
+    return { success: false, message: 'Gagal sinkronisasi offline: ' + err.toString() };
   }
 }
 
@@ -1231,9 +1373,24 @@ function getAdminDashboard() {
       };
     });
 
-    const pendingIzinHRD = mappedIzinList.filter(i => i && (i.status_persetujuan === 'Pending_HRD' || i.status_persetujuan === 'Pending'));
+    const pendingIzinHRD = mappedIzinList.filter(i => {
+      if (!i) return false;
+      if (i.status_persetujuan === 'Pending_HRD' || i.status_persetujuan === 'Pending') return true;
+      // Self-healing: jika ada izin HOD yang terlanjur tercatat Pending_HOD, alihkan otomatis ke Admin
+      if (i.status_persetujuan === 'Pending_HOD') {
+        const emp = karyawan.find(e => e && e.nik === i.nik);
+        const role = (emp && emp.role ? emp.role : '').toLowerCase();
+        if (role.includes('hod') || role.includes('admin')) return true;
+      }
+      return false;
+    });
     const pendingKaryawan = karyawan.filter(k => k && k.status_akun === 'Pending');
     const pendingEditProfil = editProfilList.filter(e => e && e.status_persetujuan === 'Pending');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    getOrCreateResetDeviceSheet(ss);
+    const allResetReqs = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
+    const pendingResetDevice = allResetReqs.filter(r => r && r.status === 'Pending').reverse();
 
     return {
       success: true,
@@ -1243,12 +1400,14 @@ function getAdminDashboard() {
         totalTerlambatToday: totalTerlambatToday,
         totalPendingIzin: pendingIzinHRD.length,
         totalPendingKaryawan: pendingKaryawan.length,
-        totalPendingEditProfil: pendingEditProfil.length
+        totalPendingEditProfil: pendingEditProfil.length,
+        totalPendingResetDevice: pendingResetDevice.length
       },
       pendingIzin: pendingIzinHRD,
       allIzin: mappedIzinList,
       pendingKaryawan: pendingKaryawan,
       pendingEditProfil: pendingEditProfil,
+      pendingResetDevice: pendingResetDevice,
       karyawanList: operationalEmployees,
       announcements: announcements,
       todayBirthdays: getTodayBirthdaysList()
@@ -1824,7 +1983,8 @@ function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
     const isIzinJam = (jenis || '').toString().toLowerCase().includes('jam');
 
     let initialStatus = 'Pending_HOD';
-    if (!isIzinJam && (empRoleLower.includes('hod') || empRoleLower.includes('admin'))) {
+    // Seluruh pengajuan oleh HOD atau Admin (termasuk Izin Jam-Jaman) LANGSUNG ke Admin HRD
+    if (empRoleLower.includes('hod') || empRoleLower.includes('admin')) {
       initialStatus = 'Pending_HRD';
     }
 
