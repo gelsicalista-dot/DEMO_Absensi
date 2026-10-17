@@ -477,7 +477,14 @@
                     </button>
                 </form>
 
-                <div class="mt-6 text-center pt-4 border-t border-slate-100">
+                <div class="mt-3 text-center">
+                    <button type="button" onclick="openModalRequestResetDevice('', '')"
+                        class="text-[11px] font-semibold text-amber-700 hover:text-amber-800 transition inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg hover:bg-amber-50">
+                        <i class="fa-solid fa-key text-amber-500 text-[10px]"></i> HP Baru / Terkunci? Ajukan Buka Perangkat
+                    </button>
+                </div>
+
+                <div class="mt-4 text-center pt-4 border-t border-slate-100">
                     <button onclick="openModalRegister()"
                         class="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition">
                         Karyawan Baru? Daftar Akun Di Sini
@@ -1028,6 +1035,18 @@
                         </h3>
                         <p class="text-xs text-slate-500 max-w-md mx-auto">Pastikan Anda berada di area radius lokasi
                             The Balcone Suites & Resort dan kamera aktif saat memindai kode QR resmi.</p>
+                    </div>
+
+                    <!-- Indikator Live Sinyal & Status Keamanan Perangkat -->
+                    <div class="flex flex-wrap items-center justify-center gap-2 pt-1 pb-1">
+                        <div id="emp-network-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span id="emp-network-status-text">Sinyal Online (Presensi Siap)</span>
+                        </div>
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-xs">
+                            <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                            <span>Proteksi HP Terdaftar</span>
+                        </div>
                     </div>
 
                     <div class="flex flex-col sm:flex-row justify-center gap-3.5 pt-2">
@@ -1724,7 +1743,7 @@
                     </div>
 
                     <!-- Bagian 1.5: Permohonan Reset Perangkat dari Karyawan -->
-                    <div id="section-pending-reset-device" class="hidden pt-6 border-t space-y-3">
+                    <div id="section-pending-reset-device" class="pt-6 border-t space-y-3">
                         <div class="flex items-center justify-between">
                             <h3 class="font-bold text-amber-900 text-sm flex items-center gap-2">
                                 <span class="flex h-2.5 w-2.5 relative">
@@ -3621,7 +3640,7 @@
     <!-- FRONTEND JAVASCRIPT LOGIC                 -->
     <!-- ========================================== -->
     <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbwZdW3j6oOdQ93oXhOw79cIq6ZPAfndZW2bR-ubphXKg9puBzpdAki12wD1VojzqaDq/exec";
+        const API_URL = https://script.google.com/macros/s/AKfycbwZdW3j6oOdQ93oXhOw79cIq6ZPAfndZW2bR-ubphXKg9puBzpdAki12wD1VojzqaDq/exec";
 
         // Global Error Catcher untuk menjaga stabilitas UI jika terjadi error tak terduga
         window.addEventListener('error', function (event) {
@@ -4027,6 +4046,20 @@
                     banner.classList.add('hidden');
                 }
             });
+        }
+
+        function updateNetworkStatusUI() {
+            const badge = document.getElementById('emp-network-status-badge');
+            const isOnline = navigator.onLine;
+            if (badge) {
+                if (isOnline) {
+                    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs';
+                    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> <span id="emp-network-status-text">Sinyal Online (Presensi Siap)</span>';
+                } else {
+                    badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-xs';
+                    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> <span id="emp-network-status-text">Mode Offline Aktif (Tersimpan di HP)</span>';
+                }
+            }
         }
 
         function triggerOfflineSync(isSilent) {
@@ -4986,8 +5019,7 @@
                                     tbodyReset.appendChild(tr);
                                 });
                             } else {
-                                secReset.classList.add('hidden');
-                                tbodyReset.innerHTML = '';
+                                tbodyReset.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400 text-xs italic"><i class="fa-solid fa-circle-check text-emerald-500 mr-1.5"></i>Tidak ada permohonan buka kunci perangkat yang menunggu verifikasi.</td></tr>';
                             }
                         }
 
@@ -5075,6 +5107,7 @@
                 switchEmpTab('home');
             }
             updateOfflineAttendanceUI();
+            updateNetworkStatusUI();
             document.getElementById('emp-nama').innerText = currentUser.nama;
             document.getElementById('emp-nik-badge').innerText = currentUser.nik;
             document.getElementById('emp-dept-role').innerText = currentUser.departemen + ' • ' + currentUser.jabatan;
@@ -6927,7 +6960,8 @@
         function openQRScanner(actionType) {
             currentAttendanceAction = actionType;
             document.getElementById('modal-qr').classList.remove('hidden');
-            document.getElementById('qr-loading').classList.remove('hidden');
+            const qrLoading = document.getElementById('qr-loading');
+            if (qrLoading) qrLoading.classList.remove('hidden');
 
             const btnTorch = document.getElementById('btn-toggle-torch');
             if (btnTorch) {
@@ -6940,64 +6974,114 @@
             // Pemanasan awal GPS di latar belakang agar koordinat langsung siap
             preWarmGPS();
 
-            setTimeout(() => {
-                if (!html5QrcodeScanner) {
-                    html5QrcodeScanner = new Html5Qrcode("qr-reader");
-                }
+            const scanConfig = {
+                fps: 10,
+                qrbox: { width: 220, height: 220 }
+            };
 
-                // Resolusi teroptimasi 720p ringan untuk HP Android lama
-                const cameraConfig = {
-                    facingMode: { ideal: "environment" },
-                    width: { ideal: 1280, max: 1920 },
-                    height: { ideal: 720, max: 1080 }
-                };
+            const onSuccess = (decodedText) => {
+                closeQRScanner();
+                executeAbsensiProcess(decodedText);
+            };
 
-                const scanConfig = {
-                    fps: 10,
-                    qrbox: function (viewfinderWidth, viewfinderHeight) {
-                        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                        const qrboxSize = Math.floor(minEdge * 0.72);
-                        return { width: qrboxSize, height: qrboxSize };
-                    },
-                    aspectRatio: 1.0,
-                    experimentalFeatures: {
-                        useBarCodeDetectorIfSupported: true
+            const onError = () => { };
+
+            const startScanner = () => {
+                try {
+                    if (!html5QrcodeScanner) {
+                        html5QrcodeScanner = new Html5Qrcode("qr-reader");
                     }
-                };
 
-                html5QrcodeScanner.start(
-                    cameraConfig,
-                    scanConfig,
-                    (decodedText) => {
-                        closeQRScanner();
-                        executeAbsensiProcess(decodedText);
-                    },
-                    () => { }
-                ).then(() => {
-                    document.getElementById('qr-loading').classList.add('hidden');
-                    try {
-                        const capabilities = html5QrcodeScanner.getRunningTrackCapabilities();
-                        if (capabilities && capabilities.torch && btnTorch) {
-                            btnTorch.classList.remove('hidden');
-                        }
-                    } catch (e) {}
-                }).catch(() => {
-                    showToast('Kamera gagal diakses. Pastikan izin kamera aktif.', 'error');
+                    // Percobaan 1: Kamera belakang standar { facingMode: "environment" }
+                    html5QrcodeScanner.start(
+                        { facingMode: "environment" },
+                        scanConfig,
+                        onSuccess,
+                        onError
+                    ).then(() => {
+                        if (qrLoading) qrLoading.classList.add('hidden');
+                        checkAndShowTorch(btnTorch);
+                    }).catch((err) => {
+                        console.warn('Percobaan facingMode environment gagal, mencoba enumerasi kamera belakang:', err);
+                        // Percobaan 2 (Fallback): Deteksi kamera belakang lewat Html5Qrcode.getCameras()
+                        Html5Qrcode.getCameras().then((cameras) => {
+                            if (cameras && cameras.length > 0) {
+                                let selectedId = cameras[0].id;
+                                const back = cameras.find(c => /back|rear|belakang|environment/i.test(c.label));
+                                if (back) {
+                                    selectedId = back.id;
+                                } else if (cameras.length > 1) {
+                                    selectedId = cameras[cameras.length - 1].id;
+                                }
+                                return html5QrcodeScanner.start(selectedId, scanConfig, onSuccess, onError);
+                            } else {
+                                throw err;
+                            }
+                        }).then(() => {
+                            if (qrLoading) qrLoading.classList.add('hidden');
+                            checkAndShowTorch(btnTorch);
+                        }).catch((finalErr) => {
+                            console.error('Kamera gagal dibuka sama sekali:', finalErr);
+                            showToast('Kamera gagal diakses. Pastikan izin kamera telah diaktifkan di browser.', 'error');
+                            closeQRScanner();
+                        });
+                    });
+                } catch (e) {
+                    console.error('Inisialisasi Html5Qrcode error:', e);
+                    showToast('Gagal memuat komponen scanner: ' + e.message, 'error');
                     closeQRScanner();
-                });
-            }, 250);
+                }
+            };
+
+            // Pastikan jika ada scanner sebelumnya, dihentikan & dibersihkan dulu
+            if (html5QrcodeScanner) {
+                try {
+                    html5QrcodeScanner.stop().then(() => {
+                        try { html5QrcodeScanner.clear(); } catch(e){}
+                        html5QrcodeScanner = null;
+                        setTimeout(startScanner, 200);
+                    }).catch(() => {
+                        try { html5QrcodeScanner.clear(); } catch(e){}
+                        html5QrcodeScanner = null;
+                        setTimeout(startScanner, 200);
+                    });
+                } catch (e) {
+                    html5QrcodeScanner = null;
+                    setTimeout(startScanner, 200);
+                }
+            } else {
+                setTimeout(startScanner, 250);
+            }
+        }
+
+        function checkAndShowTorch(btnTorch) {
+            if (!btnTorch || !html5QrcodeScanner) return;
+            try {
+                const capabilities = html5QrcodeScanner.getRunningTrackCapabilities();
+                if (capabilities && capabilities.torch) {
+                    btnTorch.classList.remove('hidden');
+                }
+            } catch (e) {
+                console.warn('Torch check warning:', e);
+            }
         }
 
         function closeQRScanner() {
             if (html5QrcodeScanner) {
-                html5QrcodeScanner.stop().then(() => {
-                    html5QrcodeScanner.clear();
+                try {
+                    html5QrcodeScanner.stop().then(() => {
+                        try { html5QrcodeScanner.clear(); } catch (e) {}
+                        html5QrcodeScanner = null;
+                    }).catch(() => {
+                        try { html5QrcodeScanner.clear(); } catch (e) {}
+                        html5QrcodeScanner = null;
+                    });
+                } catch (e) {
                     html5QrcodeScanner = null;
-                }).catch(() => {
-                    html5QrcodeScanner = null;
-                });
+                }
             }
-            document.getElementById('modal-qr').classList.add('hidden');
+            const modal = document.getElementById('modal-qr');
+            if (modal) modal.classList.add('hidden');
         }
 
         function executeAbsensiProcess(qrCodeSecret) {
@@ -8009,11 +8093,18 @@
             checkAutoLogin();
             initPWAInstallEngine();
             updateOfflineAttendanceUI();
+            updateNetworkStatusUI();
             triggerOfflineSync(true);
         });
 
         window.addEventListener('online', function () {
+            updateNetworkStatusUI();
             triggerOfflineSync(true);
+        });
+
+        window.addEventListener('offline', function () {
+            updateNetworkStatusUI();
+            showToast('Anda sedang offline. Presensi tetap dapat dilakukan dan disimpan lokal.', 'info');
         });
     </script>
 </body>
