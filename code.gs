@@ -635,24 +635,52 @@ function getOrCreateResetDeviceSheet(ss) {
 
 function requestDeviceReset(nik, alasan, hwInfo) {
   try {
+    const inputClean = (nik || '').toString().trim();
+    if (!inputClean) {
+      return { success: false, message: 'NIK atau No. Telepon tidak boleh kosong.' };
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
-    const emp = employees.find(e => e && e.nik === nik);
-    if (!emp) return { success: false, message: 'Data karyawan dengan NIK ' + nik + ' tidak ditemukan.' };
+    const cleanedPhone = sanitizePhone(inputClean);
+
+    // Cari karyawan berdasarkan NIK, No. Telepon bersih, atau No. Telepon mentah
+    const emp = employees.find(e => {
+      if (!e) return false;
+      const dbNik = (e.nik || '').toString().trim();
+      const dbPhone = sanitizePhone(e.no_telp);
+      const rawPhone = (e.no_telp || '').toString().trim();
+      return (dbNik.toLowerCase() === inputClean.toLowerCase()) || 
+             (cleanedPhone && dbPhone === cleanedPhone) || 
+             (rawPhone.toLowerCase() === inputClean.toLowerCase());
+    });
+
+    if (!emp) {
+      return { 
+        success: false, 
+        message: 'Data karyawan dengan NIK / No. Telepon "' + inputClean + '" tidak ditemukan di database.' 
+      };
+    }
+
+    const realNik = emp.nik;
+    const realNama = emp.nama || 'Karyawan';
 
     const sheetReset = getOrCreateResetDeviceSheet(ss);
     const existing = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
-    const pendingReq = existing.find(r => r && r.nik === nik && r.status === 'Pending');
+    const pendingReq = existing.find(r => r && (r.nik === realNik || r.nik === inputClean) && r.status === 'Pending');
     if (pendingReq) {
-      return { success: true, message: 'Pengajuan reset perangkat Anda sudah tercatat dan sedang menunggu verifikasi Admin HR.' };
+      return { 
+        success: true, 
+        message: 'Pengajuan reset perangkat untuk ' + realNama + ' (' + realNik + ') sudah tercatat dan sedang menunggu verifikasi Admin HR.' 
+      };
     }
 
     const newId = 'RST-' + Date.now().toString().slice(-6);
     const tglStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
     sheetReset.appendRow([
       newId,
-      nik,
-      emp.nama || 'N/A',
+      realNik,
+      realNama,
       alasan || 'Ganti smartphone / reset browser',
       tglStr,
       'Pending',
@@ -662,7 +690,7 @@ function requestDeviceReset(nik, alasan, hwInfo) {
 
     return { 
       success: true, 
-      message: 'Permohonan reset perangkat berhasil dikirim ke Admin HR! Silakan tunggu konfirmasi Admin.' 
+      message: 'Permohonan reset perangkat untuk ' + realNama + ' (' + realNik + ') berhasil dikirim ke Admin HR!' 
     };
   } catch (err) {
     return { success: false, message: 'Gagal mengajukan permohonan reset: ' + err.toString() };

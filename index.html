@@ -3066,21 +3066,20 @@
                 Akun Anda terdaftar di perangkat lain. Jika Anda baru saja berganti HP atau data browser terhapus, Anda dapat mengajukan permohonan ke Admin HR di bawah ini.
             </p>
             <form onsubmit="handleRequestResetDevice(event)" class="space-y-3">
-                <input type="hidden" id="reset-req-nik">
-                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                    <div class="flex justify-between text-slate-500">
-                        <span>Nama Karyawan:</span>
-                        <strong id="reset-req-nama" class="text-slate-800 font-bold">-</strong>
-                    </div>
-                    <div class="flex justify-between text-slate-500">
-                        <span>NIK Karyawan:</span>
-                        <span id="reset-req-nik-display" class="font-mono font-semibold text-slate-700">-</span>
-                    </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">NIK atau No. Telepon / Username Akun *</label>
+                    <input type="text" id="reset-req-nik" required
+                        placeholder="Contoh: 08123456789 atau NIK Anda..."
+                        class="w-full p-2.5 border rounded-xl text-xs font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                </div>
+                <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs flex items-center justify-between">
+                    <span class="text-slate-500">Nama Akun:</span>
+                    <strong id="reset-req-nama" class="text-slate-800 font-bold">Karyawan Balcone</strong>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Alasan Pengajuan</label>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Alasan Pengajuan *</label>
                     <textarea id="reset-req-alasan" rows="3" required
-                        placeholder="Contoh: Ganti ponsel baru / data browser terhapus otomatis..."
+                        placeholder="Contoh: Ganti smartphone baru / data browser terhapus otomatis..."
                         class="w-full p-2.5 border rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"></textarea>
                 </div>
                 <div class="flex gap-2 pt-1">
@@ -4449,14 +4448,27 @@
 
         function openModalRequestResetDevice(nik, nama) {
             const inputNik = document.getElementById('reset-req-nik');
-            const displayNik = document.getElementById('reset-req-nik-display');
             const displayNama = document.getElementById('reset-req-nama');
             const inputAlasan = document.getElementById('reset-req-alasan');
 
-            if (inputNik) inputNik.value = nik || '';
-            if (displayNik) displayNik.innerText = nik || '-';
-            if (displayNama) displayNama.innerText = nama || 'Karyawan Balcone';
-            if (inputAlasan) inputAlasan.value = '';
+            // Ambil dari input form login jika nik kosong
+            let targetNik = (nik || '').trim();
+            if (!targetNik) {
+                const loginPhoneInput = document.getElementById('login-phone');
+                if (loginPhoneInput && loginPhoneInput.value) {
+                    targetNik = loginPhoneInput.value.trim();
+                }
+            }
+
+            if (inputNik) {
+                inputNik.value = targetNik;
+            }
+            if (displayNama) {
+                displayNama.innerText = nama || (targetNik ? ('Akun: ' + targetNik) : 'Karyawan Balcone');
+            }
+            if (inputAlasan) {
+                inputAlasan.value = '';
+            }
 
             const modal = document.getElementById('modal-request-reset-device');
             if (modal) modal.classList.remove('hidden');
@@ -4469,12 +4481,22 @@
 
         function handleRequestResetDevice(e) {
             e.preventDefault();
-            const nik = document.getElementById('reset-req-nik').value;
-            const alasan = document.getElementById('reset-req-alasan').value;
+            const inputNikElem = document.getElementById('reset-req-nik');
+            const inputAlasanElem = document.getElementById('reset-req-alasan');
             const btn = document.getElementById('btn-submit-reset-device');
 
-            if (!nik || !alasan.trim()) {
+            const nik = (inputNikElem ? inputNikElem.value : '').trim();
+            const alasan = (inputAlasanElem ? inputAlasanElem.value : '').trim();
+
+            if (!nik) {
+                showToast('Mohon masukkan NIK atau No. Telepon akun Anda.', 'error');
+                if (inputNikElem) inputNikElem.focus();
+                return;
+            }
+
+            if (!alasan) {
                 showToast('Mohon masukkan alasan permohonan reset perangkat.', 'error');
+                if (inputAlasanElem) inputAlasanElem.focus();
                 return;
             }
 
