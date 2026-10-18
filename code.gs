@@ -416,6 +416,7 @@ function getSheetData(sheetName) {
 
 /**
  * Safe Object Array Reader - Mencegah TypeError saat iterasi
+ * Menerapkan Standar Rekayasa ZettBOT: Normalisasi header & Index-Based Fallback Mapping
  */
 function getSheetDataAsObjects(sheetName) {
   try {
@@ -426,8 +427,26 @@ function getSheetDataAsObjects(sheetName) {
     return rows.map(row => {
       let obj = {};
       headers.forEach((header, index) => {
-        obj[header] = (row && row[index] !== undefined) ? row[index] : '';
+        const val = (row && row[index] !== undefined) ? row[index] : '';
+        obj[header] = val;
+        // Key normalisasi lowercase & underscore agar kebal perbedaan kapitalisasi
+        const cleanKey = (header || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+        if (cleanKey && obj[cleanKey] === undefined) {
+          obj[cleanKey] = val;
+        }
       });
+
+      // Standar ZettBOT: Index-Based Fallback untuk Sheet Karyawan
+      if (sheetName === CONFIG.SHEET_KARYAWAN) {
+        if (!obj.nik && row[0]) obj.nik = row[0];
+        if (!obj.nama && row[1]) obj.nama = row[1];
+        if (!obj.no_telp && row[2]) obj.no_telp = row[2];
+        if (!obj.password && row[3]) obj.password = row[3];
+        if (!obj.role && row[4]) obj.role = row[4];
+        if (!obj.no_identitas && row[6]) obj.no_identitas = row[6];
+        if (!obj.device_id && row[21]) obj.device_id = row[21];
+      }
+
       return obj;
     });
   } catch (err) {
@@ -643,22 +662,48 @@ function requestDeviceReset(nik, alasan, hwInfo) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
     const cleanedPhone = sanitizePhone(inputClean);
+    const inputCleanLower = inputClean.toLowerCase();
+    const inputDigitsOnly = inputClean.replace(/[^0-9]/g, '');
 
-    // Cari karyawan berdasarkan NIK, No. Telepon bersih, atau No. Telepon mentah
+    // Pencarian 5-Lapis Multi-Identifier (NIK, No. Telepon, Nama Karyawan, No. Identitas KTP)
     const emp = employees.find(e => {
       if (!e) return false;
-      const dbNik = (e.nik || '').toString().trim();
-      const dbPhone = sanitizePhone(e.no_telp);
+      const dbNik = (e.nik || '').toString().trim().toLowerCase();
       const rawPhone = (e.no_telp || '').toString().trim();
-      return (dbNik.toLowerCase() === inputClean.toLowerCase()) || 
-             (cleanedPhone && dbPhone === cleanedPhone) || 
-             (rawPhone.toLowerCase() === inputClean.toLowerCase());
+      const dbPhone = sanitizePhone(e.no_telp);
+      const dbPhoneDigits = rawPhone.replace(/[^0-9]/g, '');
+      const dbNama = (e.nama || '').toString().trim().toLowerCase();
+      const dbKtp = (e.no_identitas || '').toString().trim().toLowerCase();
+
+      // 1. Cocokkan NIK
+      if (dbNik && dbNik === inputCleanLower) return true;
+
+      // 2. Cocokkan No. Telepon tersanitasi (awalan 08, 628, +62)
+      if (cleanedPhone && dbPhone && dbPhone === cleanedPhone) return true;
+      if (rawPhone && rawPhone.toLowerCase() === inputCleanLower) return true;
+
+      // 3. Cocokkan digit telepon (mengakomodasi variasi awalan atau penghapusan angka 0 di Google Sheets)
+      if (inputDigitsOnly.length >= 8 && dbPhoneDigits.length >= 8) {
+        if (dbPhoneDigits === inputDigitsOnly || 
+            dbPhoneDigits.endsWith(inputDigitsOnly) || 
+            inputDigitsOnly.endsWith(dbPhoneDigits)) {
+          return true;
+        }
+      }
+
+      // 4. Cocokkan Nama Karyawan / Username
+      if (dbNama && dbNama === inputCleanLower) return true;
+
+      // 5. Cocokkan No. Identitas KTP
+      if (dbKtp && dbKtp === inputCleanLower) return true;
+
+      return false;
     });
 
     if (!emp) {
       return { 
         success: false, 
-        message: 'Data karyawan dengan NIK / No. Telepon "' + inputClean + '" tidak ditemukan di database.' 
+        message: 'Data karyawan dengan NIK / No. Telepon "' + inputClean + '" tidak ditemukan di database. Pastikan nomor HP / NIK Anda sesuai dengan yang terdaftar di HR Balcone.' 
       };
     }
 
@@ -732,9 +777,24 @@ function resetDeviceLock(nik) {
     const sheetKaryawan = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
     if (!sheetKaryawan) return { success: false, message: 'Sheet karyawan tidak ditemukan.' };
 
-    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN);
-    const index = employees.findIndex(e => e.nik === nik);
-    if (index === -1) return { success: false, message: 'Karyawan dengan NIK ' + nik + ' tidak ditemukan.' };
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const targetClean = (nik || '').toString().trim().toLowerCase();
+    const targetPhone = sanitizePhone(nik);
+    const targetDigits = (nik || '').toString().replace(/[^0-9]/g, '');
+
+    const index = employees.findIndex(e => {
+      if (!e) return false;
+      const dbNik = (e.nik || '').toString().trim().toLowerCase();
+      const dbPhone = sanitizePhone(e.no_telp);
+      const dbDigits = (e.no_telp || '').toString().replace(/[^0-9]/g, '');
+
+      if (dbNik && dbNik === targetClean) return true;
+      if (targetPhone && dbPhone && dbPhone === targetPhone) return true;
+      if (targetDigits.length >= 8 && dbDigits.length >= 8 && (dbDigits === targetDigits || dbDigits.endsWith(targetDigits) || targetDigits.endsWith(dbDigits))) return true;
+      return false;
+    });
+
+    if (index === -1) return { success: false, message: 'Karyawan dengan NIK / No. Telepon ' + nik + ' tidak ditemukan.' };
 
     const headers = sheetKaryawan.getRange(1, 1, 1, Math.max(sheetKaryawan.getLastColumn(), 22)).getDisplayValues()[0];
     let devColIndex = headers.indexOf('device_id');
@@ -749,7 +809,7 @@ function resetDeviceLock(nik) {
 
     return { 
       success: true, 
-      message: 'Kunci perangkat karyawan ' + employees[index].nama + ' (' + nik + ') berhasil direset! Karyawan sekarang dapat login di perangkat baru.' 
+      message: 'Kunci perangkat karyawan ' + employees[index].nama + ' (' + employees[index].nik + ') berhasil direset! Karyawan sekarang dapat login di perangkat baru.' 
     };
   } catch (err) {
     return { success: false, message: 'Gagal mereset perangkat: ' + err.toString() };

@@ -3070,10 +3070,11 @@
                     <label class="block text-xs font-semibold text-gray-600 mb-1">NIK atau No. Telepon / Username Akun *</label>
                     <input type="text" id="reset-req-nik" required
                         placeholder="Contoh: 08123456789 atau NIK Anda..."
+                        oninput="onResetReqNikInput(this.value)"
                         class="w-full p-2.5 border rounded-xl text-xs font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
                 </div>
                 <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs flex items-center justify-between">
-                    <span class="text-slate-500">Nama Akun:</span>
+                    <span class="text-slate-500">Target Akun:</span>
                     <strong id="reset-req-nama" class="text-slate-800 font-bold">Karyawan Balcone</strong>
                 </div>
                 <div>
@@ -4446,6 +4447,19 @@
             });
         }
 
+        function onResetReqNikInput(val) {
+            const displayNama = document.getElementById('reset-req-nama');
+            if (!displayNama) return;
+            const clean = (val || '').trim();
+            if (!clean) {
+                displayNama.innerText = 'Karyawan Balcone';
+                displayNama.className = 'text-slate-500 font-medium';
+            } else {
+                displayNama.innerText = 'Akun: ' + clean;
+                displayNama.className = 'text-amber-800 font-bold';
+            }
+        }
+
         function openModalRequestResetDevice(nik, nama) {
             const inputNik = document.getElementById('reset-req-nik');
             const displayNama = document.getElementById('reset-req-nama');
@@ -4464,7 +4478,16 @@
                 inputNik.value = targetNik;
             }
             if (displayNama) {
-                displayNama.innerText = nama || (targetNik ? ('Akun: ' + targetNik) : 'Karyawan Balcone');
+                if (nama) {
+                    displayNama.innerText = nama;
+                    displayNama.className = 'text-slate-800 font-bold';
+                } else if (targetNik) {
+                    displayNama.innerText = 'Akun: ' + targetNik;
+                    displayNama.className = 'text-amber-800 font-bold';
+                } else {
+                    displayNama.innerText = 'Karyawan Balcone';
+                    displayNama.className = 'text-slate-500 font-medium';
+                }
             }
             if (inputAlasan) {
                 inputAlasan.value = '';
