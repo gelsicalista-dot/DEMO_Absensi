@@ -1344,6 +1344,78 @@ function syncOfflineAttendance(items) {
   }
 }
 
+/**
+ * Helper: Deteksi apakah sebuah shift/schedule merupakan penugasan tanpa jam operasional kantor/resort
+ * Contoh: Bogor, Bukittinggi, BKT, BGR, SC, Sales Call, Dinas Luar, Remote, Tugas Luar, dll.
+ * Penugasan jenis ini tidak mewajibkan absen fisik di resort dan TIDAK BOLEH dikenai ALPA.
+ */
+function isNoHoursSchedule(val, shiftsList) {
+  if (!val) return false;
+  const sStr = val.toString().trim().toLowerCase();
+  if (
+    sStr === 'sc' ||
+    sStr === 'bkt' ||
+    sStr === 'bgr' ||
+    sStr.includes('sales call') ||
+    sStr.includes('bogor') || 
+    sStr.includes('bukittinggi') || 
+    sStr.includes('tanpa jam') || 
+    sStr.includes('non jam') ||
+    sStr.includes('dinas') || 
+    sStr.includes('luar kota') || 
+    sStr.includes('remote') || 
+    sStr.includes('tugas luar')
+  ) {
+    return true;
+  }
+  if (Array.isArray(shiftsList)) {
+    const matched = shiftsList.find(s => s && (
+      (s.id_shift && s.id_shift.toString().trim().toLowerCase() === sStr) ||
+      (s.nama_shift && s.nama_shift.toString().trim().toLowerCase() === sStr)
+    ));
+    if (matched) {
+      const namaLower = (matched.nama_shift || '').toString().toLowerCase();
+      if (
+        namaLower === 'sc' ||
+        namaLower === 'bkt' ||
+        namaLower === 'bgr' ||
+        namaLower.includes('sales call') ||
+        namaLower.includes('bogor') || 
+        namaLower.includes('bukittinggi') || 
+        namaLower.includes('dinas') || 
+        namaLower.includes('tanpa jam') || 
+        namaLower.includes('remote')
+      ) {
+        return true;
+      }
+      const masuk = (matched.jam_masuk || '').toString().trim();
+      const pulang = (matched.jam_pulang || '').toString().trim();
+      const emptyMasuk = !masuk || masuk === '-' || masuk === '' || masuk === '00:00';
+      const emptyPulang = !pulang || pulang === '-' || pulang === '' || pulang === '00:00';
+      if (emptyMasuk && emptyPulang) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Helper: Deteksi apakah jadwal memiliki jam kerja operasional wajib hadir di resort
+ * Mengembalikan false jika libur (OFF), cuti/izin resmi, atau penugasan tanpa jam kerja (SC, BKT, dll)
+ */
+function hasOperationalHours(shiftVal, shiftsList) {
+  if (!shiftVal) return false;
+  const sUpper = shiftVal.toString().trim().toUpperCase();
+  if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(sUpper) || sUpper.includes('OFF') || sUpper.includes('LIBUR')) {
+    return false;
+  }
+  if (isNoHoursSchedule(shiftVal, shiftsList)) {
+    return false;
+  }
+  return true;
+}
+
 function getKaryawanDashboard(nik, monthYear) {
   try {
     const todayDate = new Date();
@@ -1509,8 +1581,8 @@ function getKaryawanDashboard(nik, monthYear) {
       if (checkYMD < todayYMD) {
         const rDay = rosterList.find(r => r && String(r.nik).trim() === String(nik).trim() && normalizeDateToYMD(r.tanggal) === checkYMD);
         if (rDay) {
-          const rShift = (rDay.id_shift || rDay.status_hari || '').toString().trim().toUpperCase();
-          if (rShift !== '' && !['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(rShift) && !rShift.includes('OFF') && !rShift.includes('LIBUR')) {
+          const rShift = (rDay.id_shift || rDay.status_hari || '').toString().trim();
+          if (hasOperationalHours(rShift, shifts)) {
             const hasAtt = absensi.some(a => a && String(a.nik).trim() === String(nik).trim() && normalizeDateToYMD(a.tanggal) === checkYMD && a.jam_masuk && a.jam_masuk !== '');
             if (!hasAtt) {
               const hasLeave = approvedLeaves.some(iz => {
@@ -1596,10 +1668,9 @@ function getUnattendedEmployeesToday(targetDept) {
       // 2. Cek jadwal roster hari ini
       const rosterToday = rosterList.find(r => r && String(r.nik).trim() === nik && normalizeDateToYMD(r.tanggal) === todayYMD);
       let rawShiftCode = rosterToday ? (rosterToday.id_shift || rosterToday.status_hari || '').toString().trim() : '';
-      let shiftCode = rawShiftCode.toUpperCase();
 
-      // Abaikan jika status hari libur / cuti
-      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftCode) || shiftCode.includes('OFF') || shiftCode.includes('LIBUR')) {
+      // Abaikan jika tidak memiliki jam operasional aktif (OFF, Cuti/Izin, atau penugasan non-jam seperti SC, BKT, Bogor, dll)
+      if (!hasOperationalHours(rawShiftCode, shifts)) {
         return;
       }
 
@@ -3105,41 +3176,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
     const izinAll = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
     const shiftsAll = getSheetDataAsObjects(CONFIG.SHEET_SHIFT) || [];
 
-    // Helper: Deteksi apakah sebuah shift/schedule merupakan jadwal tanpa jam (Bogor, Bukittinggi, Luar Kota, Remote, dll)
-    const isNoHoursSchedule = (val) => {
-      if (!val) return false;
-      const sStr = val.toString().trim().toLowerCase();
-      if (sStr.includes('bogor') || 
-          sStr.includes('bukittinggi') || 
-          sStr.includes('tanpa jam') || 
-          sStr.includes('non jam') ||
-          sStr.includes('dinas') || 
-          sStr.includes('luar kota') || 
-          sStr.includes('remote') || 
-          sStr.includes('tugas luar')) {
-        return true;
-      }
-      if (Array.isArray(shiftsAll)) {
-        const matched = shiftsAll.find(s => s && (
-          (s.id_shift && s.id_shift.toString().trim().toLowerCase() === sStr) ||
-          (s.nama_shift && s.nama_shift.toString().trim().toLowerCase() === sStr)
-        ));
-        if (matched) {
-          const namaLower = (matched.nama_shift || '').toString().toLowerCase();
-          if (namaLower.includes('bogor') || namaLower.includes('bukittinggi') || namaLower.includes('dinas') || namaLower.includes('tanpa jam') || namaLower.includes('remote')) {
-            return true;
-          }
-          const masuk = (matched.jam_masuk || '').toString().trim();
-          const pulang = (matched.jam_pulang || '').toString().trim();
-          const emptyMasuk = !masuk || masuk === '-' || masuk === '' || masuk === '00:00';
-          const emptyPulang = !pulang || pulang === '-' || pulang === '' || pulang === '00:00';
-          if (emptyMasuk && emptyPulang) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
+    const todayYMD = normalizeDateToYMD(new Date());
 
     // Filter absensi dalam rentang
     const absensiInRange = absensiAll.filter(a => a && a.tanggal && isDateInRange(a.tanggal, startDate, endDate));
@@ -3234,6 +3271,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
     let totalScheduledResort = 0;
     let totalHadirResort = 0;
     let totalTanpaJamResort = 0;
+    let totalAlpaResort = 0;
 
     const employeeAttendance = karyawan.map(emp => {
       const empNik = String(emp.nik).trim();
@@ -3252,18 +3290,39 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
       let hariOff = 0;
       let hariCuti = 0;
       let hariTanpaJam = 0;
+      let hariAlpa = 0;
+      const alpaDatesList = [];
 
       if (empRoster.length > 0) {
         empRoster.forEach(r => {
           const shiftVal = (r.id_shift || r.status_hari || '').toString().trim();
+          const rYMD = normalizeDateToYMD(r.tanggal);
+
           if (shiftVal === 'OFF') {
             hariOff++;
           } else if (['CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
             hariCuti++;
-          } else if (isNoHoursSchedule(shiftVal)) {
+          } else if (isNoHoursSchedule(shiftVal, shiftsAll)) {
             hariTanpaJam++;
           } else if (shiftVal !== '') {
             hariWajibKerja++;
+
+            // Evaluasi ALPA: jadwal wajib hadir, tanggal sudah lewat/hari ini, tidak absen masuk, dan tidak ada cuti/izin resmi
+            if (rYMD && rYMD <= todayYMD) {
+              const hasAtt = empAbsensi.some(a => a && normalizeDateToYMD(a.tanggal) === rYMD && a.jam_masuk && a.jam_masuk !== '');
+              if (!hasAtt) {
+                const hasLeave = approvedIzin.some(iz => {
+                  if (String(iz.nik).trim() !== empNik) return false;
+                  const sYMD = normalizeDateToYMD(iz.tanggal_mulai);
+                  const eYMD = normalizeDateToYMD(iz.tanggal_selesai || iz.tanggal_mulai);
+                  return sYMD && sYMD <= rYMD && (eYMD ? eYMD >= rYMD : sYMD >= rYMD);
+                });
+                if (!hasLeave) {
+                  hariAlpa++;
+                  alpaDatesList.push(rYMD);
+                }
+              }
+            }
           }
         });
       } else {
@@ -3285,6 +3344,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
       totalScheduledResort += hariWajibKerja;
       totalHadirResort += totalHadir;
       totalTanpaJamResort += hariTanpaJam;
+      totalAlpaResort += hariAlpa;
 
       let statusKPI = '100% (Mencapai Target)';
       let statusColor = 'emerald';
@@ -3308,6 +3368,8 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
         departemen: emp.departemen,
         hari_wajib: hariWajibKerja,
         total_hadir: totalHadir,
+        hari_alpa: hariAlpa,
+        alpa_dates: alpaDatesList,
         hari_off: hariOff,
         hari_cuti: Math.max(hariCuti, empIzinDays),
         hari_tanpa_jam: hariTanpaJam,
@@ -3338,6 +3400,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
         totalHariWajib: totalScheduledResort,
         totalHadirRiil: totalHadirResort,
         totalTanpaJam: totalTanpaJamResort,
+        totalAlpaResort: totalAlpaResort,
         leaveStats: leaveStats
       },
       employeeAttendance: employeeAttendance,
@@ -3379,13 +3442,14 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
     html += '<div style="background-color:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; margin-bottom:15px;">';
     html += '<table style="width:100%; font-size:9.5px; border-collapse:collapse;">';
     html += '<tr>' +
-      '<td style="width:25%; padding:4px;"><b>Total Karyawan:</b> ' + s.totalKaryawan + ' Orang</td>' +
-      '<td style="width:25%; padding:4px;"><b>Rata-rata Kehadiran:</b> <span style="color:#059669; font-weight:bold;">' + s.rataRataKehadiran + '%</span> (Target: 100%)</td>' +
-      '<td style="width:25%; padding:4px;"><b>Hari Kerja Terjadwal:</b> ' + s.totalHariWajib + ' Hari</td>' +
-      '<td style="width:25%; padding:4px;"><b>Total Hadir Riil:</b> ' + s.totalHadirRiil + ' Hari</td>' +
+      '<td style="width:20%; padding:4px;"><b>Total Karyawan:</b> ' + s.totalKaryawan + ' Orang</td>' +
+      '<td style="width:20%; padding:4px;"><b>Rata Kehadiran:</b> <span style="color:#059669; font-weight:bold;">' + s.rataRataKehadiran + '%</span></td>' +
+      '<td style="width:20%; padding:4px;"><b>Hari Wajib:</b> ' + s.totalHariWajib + ' Hari</td>' +
+      '<td style="width:20%; padding:4px;"><b>Total Hadir:</b> ' + s.totalHadirRiil + ' Hari</td>' +
+      '<td style="width:20%; padding:4px;"><b>Total Alpa:</b> <span style="color:' + ((s.totalAlpaResort || 0) > 0 ? '#dc2626; font-weight:bold;' : '#64748b;') + '">' + (s.totalAlpaResort || 0) + ' Hari</span></td>' +
       '</tr>';
     html += '<tr>' +
-      '<td colspan="4" style="padding:6px 4px 2px 4px; border-top:1px dashed #cbd5e1; color:#475569;">' +
+      '<td colspan="5" style="padding:6px 4px 2px 4px; border-top:1px dashed #cbd5e1; color:#475569;">' +
       '<b>Rekapitulasi Cuti & Izin Diambil:</b> ' +
       'Cuti Tahunan (CT): <b>' + s.leaveStats.cutiTahunan + '</b> Hr &bull; ' +
       'Public Holiday (PH): <b>' + s.leaveStats.publikHoliday + '</b> Hr &bull; ' +
@@ -3397,7 +3461,7 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
       '</td>' +
       '</tr>';
     html += '</table>' +
-      '<p style="margin:6px 0 0 0; font-size:8px; color:#64748b; font-style:italic;">* Catatan: Hari Libur (OFF), Cuti/Izin resmi, dan Schedule penugasan tanpa jam kerja (Bogor, Bukittinggi, dll: ' + (s.totalTanpaJam || 0) + ' hari) tidak dihitung sebagai hari kerja wajib.</p>' +
+      '<p style="margin:6px 0 0 0; font-size:8px; color:#64748b; font-style:italic;">* Catatan: Hari Libur (OFF), Cuti/Izin resmi, dan Schedule penugasan tanpa jam kerja (Bogor, Bukittinggi, Sales Call/SC, dll: ' + (s.totalTanpaJam || 0) + ' hari) tidak dihitung sebagai hari kerja wajib dan tidak dikenai ALPA.</p>' +
       '</div>';
 
     // Bagian 1: Tabel Persentase Kehadiran
@@ -3408,18 +3472,19 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
       '<th style="width:65px;">NIK</th>' +
       '<th>Nama Karyawan</th>' +
       '<th>Departemen</th>' +
-      '<th style="width:45px; text-align:center;">Wajib</th>' +
-      '<th style="width:45px; text-align:center;">Hadir</th>' +
+      '<th style="width:40px; text-align:center;">Wajib</th>' +
+      '<th style="width:40px; text-align:center;">Hadir</th>' +
+      '<th style="width:40px; text-align:center;">Alpa</th>' +
       '<th style="width:35px; text-align:center;">OFF</th>' +
-      '<th style="width:40px; text-align:center;">Cuti</th>' +
-      '<th style="width:50px; text-align:center;">Non-Jam</th>' +
-      '<th style="width:50px; text-align:center;">Terlambat</th>' +
-      '<th style="width:55px; text-align:center;">% Hadir</th>' +
-      '<th style="width:80px; text-align:center;">Status KPI</th>' +
+      '<th style="width:35px; text-align:center;">Cuti</th>' +
+      '<th style="width:45px; text-align:center;">Non-Jam</th>' +
+      '<th style="width:45px; text-align:center;">Terlambat</th>' +
+      '<th style="width:50px; text-align:center;">% Hadir</th>' +
+      '<th style="width:75px; text-align:center;">Status KPI</th>' +
       '</tr>';
 
     if (empAtt.length === 0) {
-      html += '<tr><td colspan="12" style="text-align:center; padding:10px; color:#94a3b8;">Tidak ada data karyawan.</td></tr>';
+      html += '<tr><td colspan="13" style="text-align:center; padding:10px; color:#94a3b8;">Tidak ada data karyawan.</td></tr>';
     } else {
       empAtt.forEach((emp, idx) => {
         const bgRow = (idx % 2 === 1) ? '#f8fafc' : '#ffffff';
@@ -3431,6 +3496,7 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
           '<td>' + emp.departemen + '</td>' +
           '<td style="text-align:center;">' + emp.hari_wajib + '</td>' +
           '<td style="text-align:center; font-weight:bold; color:#059669;">' + emp.total_hadir + '</td>' +
+          '<td style="text-align:center;' + (emp.hari_alpa > 0 ? ' font-weight:bold; color:#dc2626; background-color:#fee2e2;' : ' color:#94a3b8;') + '">' + (emp.hari_alpa > 0 ? emp.hari_alpa : '-') + '</td>' +
           '<td style="text-align:center; color:#64748b;">' + emp.hari_off + '</td>' +
           '<td style="text-align:center; color:#7c3aed;">' + emp.hari_cuti + '</td>' +
           '<td style="text-align:center; color:#0284c7; font-weight:bold;">' + (emp.hari_tanpa_jam || 0) + '</td>' +

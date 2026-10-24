@@ -2161,7 +2161,7 @@
                                         1. Persentase Kehadiran Karyawan (Target KPI: 100%)
                                     </h4>
                                     <span class="text-[10px] text-slate-500 font-medium">Hari Libur (OFF), Cuti/Izin
-                                        resmi & Schedule tanpa jam (Bogor, Bukittinggi, dll) tidak dihitung wajib</span>
+                                        resmi & Schedule tanpa jam (Bogor, Bukittinggi, Sales Call, dll) tidak dihitung wajib & tidak dikenai ALPA</span>
                                 </div>
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-xs text-left">
@@ -2171,10 +2171,11 @@
                                                 <th class="p-3">Departemen</th>
                                                 <th class="p-3 text-center">Wajib (Hr)</th>
                                                 <th class="p-3 text-center">Hadir (Hr)</th>
+                                                <th class="p-3 text-center text-rose-700 bg-rose-50/50">Alpa (Hr)</th>
                                                 <th class="p-3 text-center">OFF (Hr)</th>
                                                 <th class="p-3 text-center">Cuti/Izin</th>
                                                 <th class="p-3 text-center text-sky-800"
-                                                    title="Schedule tanpa jam masuk/pulang (misal: Bogor, Bukittinggi, Tugas Luar)">
+                                                    title="Schedule tanpa jam masuk/pulang (misal: Bogor, Bukittinggi, Sales Call, Tugas Luar)">
                                                     Non-Jam</th>
                                                 <th class="p-3 text-center">Terlambat</th>
                                                 <th class="p-3 text-center">% Kehadiran</th>
@@ -2183,7 +2184,7 @@
                                         </thead>
                                         <tbody id="table-resume-attendance-data">
                                             <tr>
-                                                <td colspan="10" class="p-5 text-center text-slate-400">Memuat resume
+                                                <td colspan="11" class="p-5 text-center text-slate-400">Memuat resume
                                                     kehadiran karyawan...</td>
                                             </tr>
                                         </tbody>
@@ -6288,7 +6289,7 @@
             const tbodyAtt = document.getElementById('table-resume-attendance-data');
             const tbodyLeave = document.getElementById('table-resume-leave-data');
             if (tbodyAtt) {
-                tbodyAtt.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Mengkalkulasi resume kehadiran karyawan...</td></tr>';
+                tbodyAtt.innerHTML = '<tr><td colspan="11" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Mengkalkulasi resume kehadiran karyawan...</td></tr>';
             }
             if (tbodyLeave) {
                 tbodyLeave.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat rincian cuti & izin...</td></tr>';
@@ -6296,7 +6297,7 @@
 
             runBackend('getAttendanceAndLeaveResume', [startDate, endDate, filterDept], function (res) {
                 if (!res || !res.success) {
-                    if (tbodyAtt) tbodyAtt.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-rose-500 font-semibold">' + (res ? res.message : 'Gagal memuat resume kehadiran') + '</td></tr>';
+                    if (tbodyAtt) tbodyAtt.innerHTML = '<tr><td colspan="11" class="p-6 text-center text-rose-500 font-semibold">' + (res ? res.message : 'Gagal memuat resume kehadiran') + '</td></tr>';
                     if (tbodyLeave) tbodyLeave.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-rose-500 font-semibold">' + (res ? res.message : 'Gagal memuat rincian cuti') + '</td></tr>';
                     return;
                 }
@@ -6340,7 +6341,7 @@
                     tbodyAtt.innerHTML = '';
                     const empList = res.employeeAttendance || [];
                     if (empList.length === 0) {
-                        tbodyAtt.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-slate-400">Tidak ada data kehadiran karyawan pada filter ini.</td></tr>';
+                        tbodyAtt.innerHTML = '<tr><td colspan="11" class="p-6 text-center text-slate-400">Tidak ada data kehadiran karyawan pada filter ini.</td></tr>';
                     } else {
                         empList.forEach(emp => {
                             const tr = document.createElement('tr');
@@ -6360,6 +6361,7 @@
                                 '<td class="p-3"><span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[11px]">' + emp.departemen + '</span></td>' +
                                 '<td class="p-3 text-center font-bold text-slate-700">' + emp.hari_wajib + ' Hr</td>' +
                                 '<td class="p-3 text-center font-bold text-emerald-700">' + emp.total_hadir + ' Hr</td>' +
+                                '<td class="p-3 text-center font-bold ' + (emp.hari_alpa > 0 ? 'text-rose-700 bg-rose-50/80' : 'text-slate-400') + '">' + (emp.hari_alpa > 0 ? '<span class="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold border border-rose-300" title="' + (emp.alpa_dates ? emp.alpa_dates.join(', ') : '') + '">' + emp.hari_alpa + ' Hr</span>' : '-') + '</td>' +
                                 '<td class="p-3 text-center text-slate-500 font-medium">' + emp.hari_off + ' Hr</td>' +
                                 '<td class="p-3 text-center text-purple-700 font-semibold">' + emp.hari_cuti + ' Hr</td>' +
                                 '<td class="p-3 text-center font-bold text-sky-700">' + (emp.hari_tanpa_jam || 0) + ' Hr</td>' +
