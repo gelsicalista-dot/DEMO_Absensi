@@ -20,7 +20,8 @@ const CONFIG = {
   SHEET_GAJI_MASTER: 'Tabel_Gaji_Master',
   SHEET_PAYROLL_BULANAN: 'Tabel_Payroll_Bulanan',
   SHEET_PINJAMAN: 'Tabel_Pinjaman_Karyawan',
-  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift'
+  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift',
+  SHEET_RESET_DEVICE: 'Tabel_Reset_Perangkat'
 };
 
 /**
@@ -68,6 +69,12 @@ function doPost(e) {
       result = loginUser(payload[0], payload[1], payload[2]);
     } else if (action === 'resetDeviceLock') {
       result = resetDeviceLock(payload[0]);
+    } else if (action === 'requestDeviceReset') {
+      result = requestDeviceReset(payload[0], payload[1], payload[2]);
+    } else if (action === 'approveDeviceReset') {
+      result = approveDeviceReset(payload[0], payload[1]);
+    } else if (action === 'syncOfflineAttendance') {
+      result = syncOfflineAttendance(payload[0]);
     } else if (action === 'registerKaryawan') {
       result = registerKaryawan(payload[0]);
     } else if (action === 'approveKaryawan') {
@@ -75,7 +82,7 @@ function doPost(e) {
     } else if (action === 'setEmployeeResign') {
       result = setEmployeeResign(payload[0], payload[1], payload[2]);
     } else if (action === 'processAbsensi') {
-      result = processAbsensi(payload[0], payload[1], payload[2], payload[3], payload[4]);
+      result = processAbsensi(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
     } else if (action === 'getKaryawanDashboard') {
       result = getKaryawanDashboard(payload[0], payload[1]);
     } else if (action === 'getHODDashboard') {
@@ -90,6 +97,8 @@ function doPost(e) {
       result = calculateMonthlyKPI(payload[0]);
     } else if (action === 'getAttendanceAndLeaveResume') {
       result = getAttendanceAndLeaveResume(payload[0], payload[1], payload[2]);
+    } else if (action === 'auditDailyUnattendedEmployees') {
+      result = auditDailyUnattendedEmployees();
     } else if (action === 'generateResumeAttendancePDFReport') {
       result = generateResumeAttendancePDFReport(payload[0], payload[1], payload[2]);
     } else if (action === 'getGlobalAttendanceList') {
@@ -409,6 +418,7 @@ function getSheetData(sheetName) {
 
 /**
  * Safe Object Array Reader - Mencegah TypeError saat iterasi
+ * Menerapkan Standar Rekayasa ZettBOT: Normalisasi header & Index-Based Fallback Mapping
  */
 function getSheetDataAsObjects(sheetName) {
   try {
@@ -419,8 +429,26 @@ function getSheetDataAsObjects(sheetName) {
     return rows.map(row => {
       let obj = {};
       headers.forEach((header, index) => {
-        obj[header] = (row && row[index] !== undefined) ? row[index] : '';
+        const val = (row && row[index] !== undefined) ? row[index] : '';
+        obj[header] = val;
+        // Key normalisasi lowercase & underscore agar kebal perbedaan kapitalisasi
+        const cleanKey = (header || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+        if (cleanKey && obj[cleanKey] === undefined) {
+          obj[cleanKey] = val;
+        }
       });
+
+      // Standar ZettBOT: Index-Based Fallback untuk Sheet Karyawan
+      if (sheetName === CONFIG.SHEET_KARYAWAN) {
+        if (!obj.nik && row[0]) obj.nik = row[0];
+        if (!obj.nama && row[1]) obj.nama = row[1];
+        if (!obj.no_telp && row[2]) obj.no_telp = row[2];
+        if (!obj.password && row[3]) obj.password = row[3];
+        if (!obj.role && row[4]) obj.role = row[4];
+        if (!obj.no_identitas && row[6]) obj.no_identitas = row[6];
+        if (!obj.device_id && row[21]) obj.device_id = row[21];
+      }
+
       return obj;
     });
   } catch (err) {
@@ -616,15 +644,159 @@ function getTodayBirthdaysList() {
   }
 }
 
+function getOrCreateResetDeviceSheet(ss) {
+  let sheet = ss.getSheetByName(CONFIG.SHEET_RESET_DEVICE);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.SHEET_RESET_DEVICE);
+    sheet.appendRow(['id_request', 'nik', 'nama', 'alasan', 'tanggal_request', 'status', 'hardware_info']);
+    SpreadsheetApp.flush();
+  }
+  return sheet;
+}
+
+function requestDeviceReset(nik, alasan, hwInfo) {
+  try {
+    const inputClean = (nik || '').toString().trim();
+    if (!inputClean) {
+      return { success: false, message: 'NIK atau No. Telepon tidak boleh kosong.' };
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const cleanedPhone = sanitizePhone(inputClean);
+    const inputCleanLower = inputClean.toLowerCase();
+    const inputDigitsOnly = inputClean.replace(/[^0-9]/g, '');
+
+    // Pencarian 5-Lapis Multi-Identifier (NIK, No. Telepon, Nama Karyawan, No. Identitas KTP)
+    const emp = employees.find(e => {
+      if (!e) return false;
+      const dbNik = (e.nik || '').toString().trim().toLowerCase();
+      const rawPhone = (e.no_telp || '').toString().trim();
+      const dbPhone = sanitizePhone(e.no_telp);
+      const dbPhoneDigits = rawPhone.replace(/[^0-9]/g, '');
+      const dbNama = (e.nama || '').toString().trim().toLowerCase();
+      const dbKtp = (e.no_identitas || '').toString().trim().toLowerCase();
+
+      // 1. Cocokkan NIK
+      if (dbNik && dbNik === inputCleanLower) return true;
+
+      // 2. Cocokkan No. Telepon tersanitasi (awalan 08, 628, +62)
+      if (cleanedPhone && dbPhone && dbPhone === cleanedPhone) return true;
+      if (rawPhone && rawPhone.toLowerCase() === inputCleanLower) return true;
+
+      // 3. Cocokkan digit telepon (mengakomodasi variasi awalan atau penghapusan angka 0 di Google Sheets)
+      if (inputDigitsOnly.length >= 8 && dbPhoneDigits.length >= 8) {
+        if (dbPhoneDigits === inputDigitsOnly || 
+            dbPhoneDigits.endsWith(inputDigitsOnly) || 
+            inputDigitsOnly.endsWith(dbPhoneDigits)) {
+          return true;
+        }
+      }
+
+      // 4. Cocokkan Nama Karyawan / Username
+      if (dbNama && dbNama === inputCleanLower) return true;
+
+      // 5. Cocokkan No. Identitas KTP
+      if (dbKtp && dbKtp === inputCleanLower) return true;
+
+      return false;
+    });
+
+    if (!emp) {
+      return { 
+        success: false, 
+        message: 'Data karyawan dengan NIK / No. Telepon "' + inputClean + '" tidak ditemukan di database. Pastikan nomor HP / NIK Anda sesuai dengan yang terdaftar di HR Balcone.' 
+      };
+    }
+
+    const realNik = emp.nik;
+    const realNama = emp.nama || 'Karyawan';
+
+    const sheetReset = getOrCreateResetDeviceSheet(ss);
+    const existing = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
+    const pendingReq = existing.find(r => r && (r.nik === realNik || r.nik === inputClean) && r.status === 'Pending');
+    if (pendingReq) {
+      return { 
+        success: true, 
+        message: 'Pengajuan reset perangkat untuk ' + realNama + ' (' + realNik + ') sudah tercatat dan sedang menunggu verifikasi Admin HR.' 
+      };
+    }
+
+    const newId = 'RST-' + Date.now().toString().slice(-6);
+    const tglStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
+    sheetReset.appendRow([
+      newId,
+      realNik,
+      realNama,
+      alasan || 'Ganti smartphone / reset browser',
+      tglStr,
+      'Pending',
+      hwInfo || ''
+    ]);
+    SpreadsheetApp.flush();
+
+    return { 
+      success: true, 
+      message: 'Permohonan reset perangkat untuk ' + realNama + ' (' + realNik + ') berhasil dikirim ke Admin HR!' 
+    };
+  } catch (err) {
+    return { success: false, message: 'Gagal mengajukan permohonan reset: ' + err.toString() };
+  }
+}
+
+function approveDeviceReset(idRequest, isApproved) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetReset = getOrCreateResetDeviceSheet(ss);
+    const requests = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
+    const index = requests.findIndex(r => r && (r.id_request === idRequest || r.nik === idRequest));
+    if (index === -1) return { success: false, message: 'Data pengajuan reset tidak ditemukan.' };
+
+    const req = requests[index];
+    const rowNum = index + 2;
+    const newStatus = isApproved ? 'Approved' : 'Rejected';
+    sheetReset.getRange(rowNum, 6).setValue(newStatus);
+    SpreadsheetApp.flush();
+
+    if (isApproved) {
+      resetDeviceLock(req.nik);
+    }
+
+    return { 
+      success: true, 
+      message: isApproved 
+        ? 'Permohonan reset perangkat untuk ' + req.nama + ' (' + req.nik + ') disetujui! Kunci perangkat telah dibuka.' 
+        : 'Permohonan reset perangkat ditolak.' 
+    };
+  } catch (err) {
+    return { success: false, message: 'Gagal memproses permohonan: ' + err.toString() };
+  }
+}
+
 function resetDeviceLock(nik) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetKaryawan = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
     if (!sheetKaryawan) return { success: false, message: 'Sheet karyawan tidak ditemukan.' };
 
-    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN);
-    const index = employees.findIndex(e => e.nik === nik);
-    if (index === -1) return { success: false, message: 'Karyawan dengan NIK ' + nik + ' tidak ditemukan.' };
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const targetClean = (nik || '').toString().trim().toLowerCase();
+    const targetPhone = sanitizePhone(nik);
+    const targetDigits = (nik || '').toString().replace(/[^0-9]/g, '');
+
+    const index = employees.findIndex(e => {
+      if (!e) return false;
+      const dbNik = (e.nik || '').toString().trim().toLowerCase();
+      const dbPhone = sanitizePhone(e.no_telp);
+      const dbDigits = (e.no_telp || '').toString().replace(/[^0-9]/g, '');
+
+      if (dbNik && dbNik === targetClean) return true;
+      if (targetPhone && dbPhone && dbPhone === targetPhone) return true;
+      if (targetDigits.length >= 8 && dbDigits.length >= 8 && (dbDigits === targetDigits || dbDigits.endsWith(targetDigits) || targetDigits.endsWith(dbDigits))) return true;
+      return false;
+    });
+
+    if (index === -1) return { success: false, message: 'Karyawan dengan NIK / No. Telepon ' + nik + ' tidak ditemukan.' };
 
     const headers = sheetKaryawan.getRange(1, 1, 1, Math.max(sheetKaryawan.getLastColumn(), 22)).getDisplayValues()[0];
     let devColIndex = headers.indexOf('device_id');
@@ -639,7 +811,7 @@ function resetDeviceLock(nik) {
 
     return { 
       success: true, 
-      message: 'Kunci perangkat karyawan ' + employees[index].nama + ' (' + nik + ') berhasil direset! Karyawan sekarang dapat login di perangkat baru.' 
+      message: 'Kunci perangkat karyawan ' + employees[index].nama + ' (' + employees[index].nik + ') berhasil direset! Karyawan sekarang dapat login di perangkat baru.' 
     };
   } catch (err) {
     return { success: false, message: 'Gagal mereset perangkat: ' + err.toString() };
@@ -698,6 +870,16 @@ function loginUser(noTelp, password, clientDeviceId) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetKaryawan = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
 
+      // Parse token client (UUID + Hardware Fingerprint)
+      const clientParts = clientDeviceId.toString().split(':::');
+      const clientUUID = clientParts[0].trim();
+      const clientHwFp = clientParts.length > 1 ? clientParts[1].trim() : '';
+
+      // Parse registered device token
+      const regParts = registeredDevice.split(':::');
+      const regUUID = regParts[0].trim();
+      const regHwFp = regParts.length > 1 ? regParts[1].trim() : '';
+
       // Jika kolom device_id belum ada / kosong -> Kunci perangkat pertama kali
       if (!registeredDevice) {
         if (sheetKaryawan && userIndex !== -1) {
@@ -711,18 +893,38 @@ function loginUser(noTelp, password, clientDeviceId) {
           sheetKaryawan.getRange(rowNum, devColIndex + 1).setNumberFormat('@').setValue(clientDeviceId);
           SpreadsheetApp.flush();
         }
-      } else if (registeredDevice !== clientDeviceId) {
-        // Perangkat tidak cocok
-        return {
-          success: false,
-          isDeviceLocked: true,
-          message: 'Akses Ditolak: Akun Anda sudah terdaftar di perangkat lain. Silakan hubungi Admin HR untuk membuka kunci perangkat Anda.'
-        };
+      } else {
+        // Evaluasi kecocokan: UUID sama ATAU Hardware Fingerprint sama
+        const isUUIDMatch = (regUUID && clientUUID && regUUID === clientUUID);
+        const isHwMatch = (regHwFp && clientHwFp && regHwFp === clientHwFp);
+
+        if (isUUIDMatch || isHwMatch) {
+          // Self-Healing: Jika UUID terhapus oleh cleaner HP tapi hardware sama persis, perbarui UUID
+          if (!isUUIDMatch && isHwMatch && sheetKaryawan && userIndex !== -1) {
+            const rowNum = userIndex + 2;
+            const headers = sheetKaryawan.getRange(1, 1, 1, Math.max(sheetKaryawan.getLastColumn(), 22)).getDisplayValues()[0];
+            let devColIndex = headers.indexOf('device_id');
+            if (devColIndex !== -1) {
+              sheetKaryawan.getRange(rowNum, devColIndex + 1).setNumberFormat('@').setValue(clientDeviceId);
+              SpreadsheetApp.flush();
+            }
+          }
+        } else {
+          // Benar-benar perangkat lain
+          return {
+            success: false,
+            isDeviceLocked: true,
+            nik: user.nik,
+            nama: user.nama,
+            message: 'Akses Ditolak: Akun Anda sudah terdaftar di perangkat lain. Silakan ajukan reset perangkat ke Admin HR jika Anda berganti smartphone.'
+          };
+        }
       }
     }
 
     return {
       success: true,
+      serverTimestamp: Date.now(),
       user: {
         nik: user.nik,
         nama: user.nama,
@@ -832,7 +1034,7 @@ function setEmployeeResign(nik, tglResign, statusKerja) {
   }
 }
 
-function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
+function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlineTimestamp) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetSettings = ss.getSheetByName(CONFIG.SHEET_PENGATURAN);
@@ -861,24 +1063,36 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
       };
     }
 
-    const todayDate = new Date();
+    const todayDate = offlineTimestamp ? new Date(Number(offlineTimestamp)) : new Date();
     const todayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
     const isoTodayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'yyyy-MM-dd');
     const timeStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'HH:mm:ss');
     
     const yesterdayDate = new Date(todayDate.getTime() - 24 * 60 * 60 * 1000);
     const yesterdayStr = Utilities.formatDate(yesterdayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
+    const isoYesterdayStr = Utilities.formatDate(yesterdayDate, 'Asia/Jakarta', 'yyyy-MM-dd');
 
-    const rosterList = getSheetDataAsObjects(CONFIG.SHEET_ROSTER);
-    const userRosterToday = rosterList.find(r => r.nik === nik && (r.tanggal === isoTodayStr || r.tanggal === todayStr));
+    const todayYMD = normalizeDateToYMD(todayDate);
+    const yesterdayYMD = normalizeDateToYMD(yesterdayDate);
+
+    const rosterList = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
+    const userRosterToday = rosterList.find(r => 
+      r && String(r.nik).trim() === String(nik).trim() && 
+      normalizeDateToYMD(r.tanggal) === todayYMD
+    );
 
     let activeShift = null;
-    const shifts = getSheetDataAsObjects(CONFIG.SHEET_SHIFT);
+    const shifts = getSheetDataAsObjects(CONFIG.SHEET_SHIFT) || [];
 
     if (actionType === 'MASUK') {
+      let isOffDay = false;
+      let offLabel = 'OFF (Libur)';
+
       if (userRosterToday) {
-        const shiftVal = userRosterToday.id_shift || userRosterToday.status_hari;
-        if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
+        const rawShift = (userRosterToday.id_shift || userRosterToday.status_hari || '').toString().trim();
+        const shiftVal = rawShift.toUpperCase();
+        if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal) || shiftVal.includes('OFF') || shiftVal.includes('LIBUR')) {
+          isOffDay = true;
           const labelMap = {
             'OFF': 'OFF (Libur)',
             'CT': 'Cuti Tahunan (CT)',
@@ -888,9 +1102,14 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
             'I': 'Izin (I)',
             'CK': 'Cuti Khusus (CK)'
           };
-          return { success: false, message: 'Hari ini jadwal Anda adalah ' + (labelMap[shiftVal] || shiftVal) + ' pada Roster Shift.' };
+          offLabel = labelMap[shiftVal] || rawShift;
+        } else {
+          activeShift = shifts.find(s => s && String(s.id_shift).trim().toUpperCase() === shiftVal);
         }
-        activeShift = shifts.find(s => s.id_shift === userRosterToday.id_shift);
+      }
+
+      if (isOffDay) {
+        return { success: false, message: 'Hari ini jadwal Anda adalah ' + offLabel + '. Absen Masuk ditolak.' };
       }
 
       if (!activeShift) {
@@ -899,14 +1118,17 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
     }
 
     const sheetAbsensi = ss.getSheetByName(CONFIG.SHEET_ABSENSI);
-    const absensiData = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI);
-    const existingIndex = absensiData.findIndex(a => a.nik === nik && a.tanggal === todayStr);
+    const absensiData = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
+    const existingIndex = absensiData.findIndex(a => 
+      a && String(a.nik).trim() === String(nik).trim() && 
+      normalizeDateToYMD(a.tanggal) === todayYMD
+    );
 
     const formattedUserLat = "'" + userLat.toString();
     const formattedUserLong = "'" + userLong.toString();
 
     if (actionType === 'MASUK') {
-      if (existingIndex !== -1 && absensiData[existingIndex].jam_masuk !== '') {
+      if (existingIndex !== -1 && absensiData[existingIndex].jam_masuk && absensiData[existingIndex].jam_masuk !== '') {
         return { success: false, message: 'Anda sudah melakukan Absen Masuk hari ini!' };
       }
 
@@ -915,19 +1137,19 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
       
       if (activeShift && activeShift.jam_masuk && activeShift.jam_masuk.includes(':')) {
         const [scheduleHour, scheduleMin] = activeShift.jam_masuk.split(':').map(Number);
-        const now = new Date();
+        const now = todayDate;
         const scheduleTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), scheduleHour, scheduleMin, 0);
         const toleranceMs = parseInt(activeShift.toleransi_terlambat_menit || '15', 10) * 60 * 1000;
         
         if (now.getTime() > scheduleTime.getTime() + toleranceMs) {
           lateMinutes = Math.round((now.getTime() - scheduleTime.getTime()) / 60000);
-          status = 'Terlambat';
+          status = 'Terlambat (' + lateMinutes + 'm)';
 
           // Cek dispensasi jika ada izin jam-jaman yang disetujui HOD/HRD untuk hari ini
           const allIzinData = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
           const approvedIzinJam = allIzinData.find(iz => 
-            iz && iz.nik === nik && 
-            (iz.tanggal_mulai === isoTodayStr || iz.tanggal_mulai === todayStr) &&
+            iz && String(iz.nik).trim() === String(nik).trim() && 
+            normalizeDateToYMD(iz.tanggal_mulai) === todayYMD &&
             (iz.status_persetujuan === 'Approved' || iz.status_persetujuan === 'Approved_HOD') &&
             (iz.jenis || '').toString().toLowerCase().includes('jam')
           );
@@ -958,44 +1180,167 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
       }
 
       SpreadsheetApp.flush();
-      return { success: true, message: 'Absen Masuk Berhasil! Status: ' + status + ' (' + timeStr + ')' };
+      return { 
+        success: true, 
+        message: 'Absen Masuk Berhasil! Status: ' + status + ' (' + timeStr + ')',
+        jam_masuk: timeStr,
+        status: status,
+        lateMinutes: lateMinutes
+      };
 
     } else if (actionType === 'PULANG') {
-      let targetIndex = absensiData.findIndex(a => a.nik === nik && a.tanggal === todayStr && a.jam_masuk !== '' && a.jam_pulang === '');
+      let targetIndex = absensiData.findIndex(a => 
+        a && String(a.nik).trim() === String(nik).trim() && 
+        normalizeDateToYMD(a.tanggal) === todayYMD && 
+        a.jam_masuk !== '' && (!a.jam_pulang || a.jam_pulang === '')
+      );
       let isOvernightSession = false;
 
       if (targetIndex === -1) {
-        targetIndex = absensiData.findIndex(a => a.nik === nik && a.tanggal === yesterdayStr && a.jam_masuk !== '' && a.jam_pulang === '');
+        targetIndex = absensiData.findIndex(a => 
+          a && String(a.nik).trim() === String(nik).trim() && 
+          normalizeDateToYMD(a.tanggal) === yesterdayYMD && 
+          a.jam_masuk !== '' && (!a.jam_pulang || a.jam_pulang === '')
+        );
         if (targetIndex !== -1) {
           isOvernightSession = true;
         }
       }
 
       if (targetIndex === -1) {
-        const alreadyOutToday = absensiData.some(a => a.nik === nik && a.tanggal === todayStr && a.jam_pulang !== '');
+        const alreadyOutToday = absensiData.some(a => 
+          a && String(a.nik).trim() === String(nik).trim() && 
+          normalizeDateToYMD(a.tanggal) === todayYMD && 
+          a.jam_pulang && a.jam_pulang !== ''
+        );
         if (alreadyOutToday) {
           return { success: false, message: 'Anda sudah melakukan Absen Pulang hari ini!' };
         }
         return { success: false, message: 'Anda belum Absen Masuk untuk sesi shift ini!' };
       }
 
+      const sessionDateStr = absensiData[targetIndex].tanggal;
+      const sessionTargetYMD = isOvernightSession ? yesterdayYMD : todayYMD;
+
+      // Evaluasi jadwal pulang shift untuk deteksi Pulang Cepat
+      const sessionRoster = rosterList.find(r => 
+        r && String(r.nik).trim() === String(nik).trim() && 
+        normalizeDateToYMD(r.tanggal) === sessionTargetYMD
+      );
+      let sessionShift = null;
+      if (sessionRoster) {
+        const rShiftVal = (sessionRoster.id_shift || sessionRoster.status_hari || '').toString().trim().toUpperCase();
+        sessionShift = shifts.find(s => s && String(s.id_shift).trim().toUpperCase() === rShiftVal);
+      }
+      if (!sessionShift) {
+        sessionShift = shifts[0];
+      }
+
+      let earlyLeaveMinutes = 0;
+      let existingStatus = (absensiData[targetIndex].status || 'Tepat Waktu').toString().trim();
+      let existingLateMinutes = parseInt(absensiData[targetIndex].keterlambatan_menit || '0', 10);
+      if (isNaN(existingLateMinutes)) existingLateMinutes = 0;
+      let updatedStatus = existingStatus;
+
+      if (sessionShift && sessionShift.jam_pulang && sessionShift.jam_pulang.includes(':')) {
+        const [outHour, outMin] = sessionShift.jam_pulang.split(':').map(Number);
+        const refDate = todayDate;
+        const schedOutDate = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate(), outHour, outMin, 0);
+
+        // Jika jam tap pulang lebih awal dari jadwal resmi (toleransi > 5 menit)
+        if (refDate.getTime() < schedOutDate.getTime() - 5 * 60 * 1000) {
+          earlyLeaveMinutes = Math.round((schedOutDate.getTime() - refDate.getTime()) / 60000);
+
+          // Cek apakah ada izin jam-jaman yang disetujui HOD/HRD untuk sesi ini
+          const allIzinData = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+          const approvedIzinJam = allIzinData.find(iz => 
+            iz && String(iz.nik).trim() === String(nik).trim() && 
+            normalizeDateToYMD(iz.tanggal_mulai) === sessionTargetYMD &&
+            (iz.status_persetujuan === 'Approved' || iz.status_persetujuan === 'Approved_HOD') &&
+            (iz.jenis || '').toString().toLowerCase().includes('jam')
+          );
+
+          if (approvedIzinJam) {
+            earlyLeaveMinutes = 0;
+            if (existingStatus.includes('Terlambat')) {
+              updatedStatus = 'Terlambat & Dispensasi Izin Pulang Cepat';
+            } else {
+              updatedStatus = 'Dispensasi Izin Pulang Cepat';
+            }
+          } else {
+            if (existingStatus.includes('Terlambat')) {
+              const baseLateLabel = existingLateMinutes > 0 ? ('Terlambat (' + existingLateMinutes + 'm)') : 'Terlambat';
+              updatedStatus = baseLateLabel + ' & Pulang Cepat (' + earlyLeaveMinutes + 'm)';
+            } else {
+              updatedStatus = 'Pulang Cepat (' + earlyLeaveMinutes + 'm)';
+            }
+          }
+        }
+      }
+
+      const totalDeficitMinutes = existingLateMinutes + earlyLeaveMinutes;
+
       const rowNum = targetIndex + 2;
       sheetAbsensi.getRange(rowNum, 7).setValue(timeStr);
       sheetAbsensi.getRange(rowNum, 8).setNumberFormat('@').setValue(formattedUserLat);
       sheetAbsensi.getRange(rowNum, 9).setNumberFormat('@').setValue(formattedUserLong);
+      sheetAbsensi.getRange(rowNum, 10).setValue(updatedStatus);
+      sheetAbsensi.getRange(rowNum, 11).setValue(totalDeficitMinutes.toString());
 
       SpreadsheetApp.flush();
 
-      const sessionDate = absensiData[targetIndex].tanggal;
-      const successMsg = isOvernightSession
-        ? 'Absen Pulang Berhasil! Sesi Shift Malam (' + sessionDate + ') telah diselesaikan (' + timeStr + '). Terima kasih!'
-        : 'Absen Pulang Berhasil! Terima kasih (' + timeStr + ')';
+      let successMsg = isOvernightSession
+        ? 'Absen Pulang Berhasil! Sesi Shift Malam (' + sessionDateStr + ') diselesaikan (' + timeStr + ').'
+        : 'Absen Pulang Berhasil! Waktu: ' + timeStr;
 
-      return { success: true, message: successMsg };
+      if (earlyLeaveMinutes > 0) {
+        successMsg += ' (Catatan: Pulang Cepat ' + earlyLeaveMinutes + ' menit)';
+      } else {
+        successMsg += '. Terima kasih!';
+      }
+
+      return { 
+        success: true, 
+        message: successMsg,
+        jam_pulang: timeStr,
+        status: updatedStatus,
+        earlyLeaveMinutes: earlyLeaveMinutes,
+        totalDeficitMinutes: totalDeficitMinutes
+      };
     }
 
   } catch (err) {
     return { success: false, message: 'Gagal memproses absensi: ' + err.toString() };
+  }
+}
+
+function syncOfflineAttendance(items) {
+  try {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return { success: true, syncedCount: 0, totalCount: 0, message: 'Tidak ada data antrean absensi offline.' };
+    }
+    let successCount = 0;
+    let errorMsgs = [];
+    items.forEach(item => {
+      try {
+        const res = processAbsensi(item.nik, item.lat, item.lng, item.qrSecretCode, item.actionType, item.timestamp);
+        if (res && res.success) {
+          successCount++;
+        } else {
+          errorMsgs.push(res ? res.message : 'Gagal');
+        }
+      } catch (e) {
+        errorMsgs.push(e.toString());
+      }
+    });
+    return {
+      success: successCount > 0,
+      syncedCount: successCount,
+      totalCount: items.length,
+      message: successCount + ' dari ' + items.length + ' absensi offline berhasil disinkronkan ke server.' + (errorMsgs.length > 0 ? ' (' + errorMsgs[0] + ')' : '')
+    };
+  } catch (err) {
+    return { success: false, message: 'Gagal sinkronisasi offline: ' + err.toString() };
   }
 }
 
@@ -1008,11 +1353,21 @@ function getKaryawanDashboard(nik, monthYear) {
     const yesterdayDate = new Date(todayDate.getTime() - 24 * 60 * 60 * 1000);
     const yesterdayStr = Utilities.formatDate(yesterdayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
 
+    const todayYMD = normalizeDateToYMD(todayDate);
+    const yesterdayYMD = normalizeDateToYMD(yesterdayDate);
+
     const absensi = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
-    let todayRecord = absensi.find(a => a.nik === nik && a.tanggal === todayStr) || null;
+    let todayRecord = absensi.find(a => 
+      a && String(a.nik).trim() === String(nik).trim() && 
+      normalizeDateToYMD(a.tanggal) === todayYMD
+    ) || null;
     
     if (!todayRecord) {
-      const pendingYesterday = absensi.find(a => a.nik === nik && a.tanggal === yesterdayStr && a.jam_masuk !== '' && a.jam_pulang === '');
+      const pendingYesterday = absensi.find(a => 
+        a && String(a.nik).trim() === String(nik).trim() && 
+        normalizeDateToYMD(a.tanggal) === yesterdayYMD && 
+        a.jam_masuk && a.jam_masuk !== '' && (!a.jam_pulang || a.jam_pulang === '')
+      );
       if (pendingYesterday) {
         todayRecord = Object.assign({}, pendingYesterday);
         todayRecord.isOvernightActive = true;
@@ -1020,7 +1375,7 @@ function getKaryawanDashboard(nik, monthYear) {
     }
     
     const personalHistory = absensi
-      .filter(a => a.nik === nik)
+      .filter(a => a && String(a.nik).trim() === String(nik).trim())
       .reverse()
       .slice(0, 10);
 
@@ -1029,7 +1384,7 @@ function getKaryawanDashboard(nik, monthYear) {
       .reverse();
 
     const leaveHistory = (getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [])
-      .filter(i => i.nik === nik)
+      .filter(i => i && String(i.nik).trim() === String(nik).trim())
       .reverse();
 
     const rosterList = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
@@ -1058,13 +1413,18 @@ function getKaryawanDashboard(nik, monthYear) {
 
     while (curDate <= endDate) {
       const isoDate = Utilities.formatDate(curDate, 'Asia/Jakarta', 'yyyy-MM-dd');
-      const matched = rosterList.find(r => r && String(r.nik).trim() === String(nik).trim() && r.tanggal === isoDate);
+      const curYMD = normalizeDateToYMD(curDate);
+      const matched = rosterList.find(r => 
+        r && String(r.nik).trim() === String(nik).trim() && 
+        normalizeDateToYMD(r.tanggal) === curYMD
+      );
       
-      const shiftVal = matched ? (matched.id_shift || matched.status_hari) : 'OFF';
-      let shiftName = shiftVal;
+      const rawShiftVal = matched ? (matched.id_shift || matched.status_hari) : 'OFF';
+      const shiftUpper = (rawShiftVal || '').toString().trim().toUpperCase();
+      let shiftName = rawShiftVal;
       let shiftTime = '';
 
-      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
+      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftUpper) || shiftUpper.includes('OFF') || shiftUpper.includes('LIBUR')) {
         const labelMap = {
           'OFF': 'OFF (Libur)',
           'CT': 'Cuti Tahunan (CT)',
@@ -1074,11 +1434,11 @@ function getKaryawanDashboard(nik, monthYear) {
           'I': 'Izin (I)',
           'CK': 'Cuti Khusus (CK)'
         };
-        shiftName = labelMap[shiftVal] || shiftVal;
+        shiftName = labelMap[shiftUpper] || rawShiftVal;
       } else {
-        const matchedShift = shifts.find(s => s.id_shift === shiftVal);
+        const matchedShift = shifts.find(s => s && String(s.id_shift).trim().toUpperCase() === shiftUpper);
         if (matchedShift) {
-          shiftName = matchedShift.nama_shift || shiftVal;
+          shiftName = matchedShift.nama_shift || rawShiftVal;
           if (matchedShift.jam_masuk && matchedShift.jam_pulang) {
             shiftTime = matchedShift.jam_masuk + ' - ' + matchedShift.jam_pulang;
           } else if (matchedShift.jam_masuk) {
@@ -1092,8 +1452,8 @@ function getKaryawanDashboard(nik, monthYear) {
       personalRosterWithDetails.push({
         id_roster: matched ? matched.id_roster : ('OFF-' + isoDate),
         tanggal: isoDate,
-        id_shift: shiftVal,
-        status_hari: matched ? (matched.status_hari || shiftVal) : 'OFF',
+        id_shift: rawShiftVal,
+        status_hari: matched ? (matched.status_hari || rawShiftVal) : 'OFF',
         shift_nama: shiftName,
         shift_jam: shiftTime
       });
@@ -1101,12 +1461,18 @@ function getKaryawanDashboard(nik, monthYear) {
       curDate.setDate(curDate.getDate() + 1);
     }
 
-    const userRoster = rosterList.find(r => r && String(r.nik).trim() === String(nik).trim() && (r.tanggal === isoTodayStr || r.tanggal === todayStr));
+    const userRoster = rosterList.find(r => 
+      r && String(r.nik).trim() === String(nik).trim() && 
+      normalizeDateToYMD(r.tanggal) === todayYMD
+    );
     
-    let shiftInfo = 'OFF (Libur)';
+    let isOffToday = false;
+    let shiftInfo = 'Standard (08:00 - 17:00)';
     if (userRoster) {
-      const shiftVal = userRoster.id_shift || userRoster.status_hari;
-      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal)) {
+      const rawShift = (userRoster.id_shift || userRoster.status_hari || '').toString().trim();
+      const shiftVal = rawShift.toUpperCase();
+      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftVal) || shiftVal.includes('OFF') || shiftVal.includes('LIBUR')) {
+        isOffToday = true;
         const labelMap = {
           'OFF': 'OFF (Libur)',
           'CT': 'Cuti Tahunan (CT)',
@@ -1116,16 +1482,50 @@ function getKaryawanDashboard(nik, monthYear) {
           'I': 'Izin (I)',
           'CK': 'Cuti Khusus (CK)'
         };
-        shiftInfo = labelMap[shiftVal] || shiftVal;
+        shiftInfo = labelMap[shiftVal] || rawShift;
       } else {
-        const matched = shifts.find(s => s.id_shift === userRoster.id_shift);
+        const matched = shifts.find(s => s && String(s.id_shift).trim().toUpperCase() === shiftVal);
         if (matched) {
           const jamStr = (matched.jam_masuk && matched.jam_pulang) ? ' (' + matched.jam_masuk + ' - ' + matched.jam_pulang + ')' : (matched.jam_masuk ? ' (' + matched.jam_masuk + ')' : '');
-          shiftInfo = (matched.nama_shift || userRoster.id_shift) + jamStr;
+          shiftInfo = (matched.nama_shift || rawShift) + jamStr;
         } else {
-          shiftInfo = userRoster.id_shift;
+          shiftInfo = rawShift;
         }
       }
+    } else {
+      const defaultShift = shifts[0];
+      if (defaultShift) {
+        const jamStr = (defaultShift.jam_masuk && defaultShift.jam_pulang) ? ' (' + defaultShift.jam_masuk + ' - ' + defaultShift.jam_pulang + ')' : (defaultShift.jam_masuk ? ' (' + defaultShift.jam_masuk + ')' : '');
+        shiftInfo = (defaultShift.nama_shift || defaultShift.id_shift) + jamStr;
+      }
+    }
+
+    // Deteksi ALPA masa lalu dalam periode cut-off berjalan
+    const alpaDates = [];
+    const approvedLeaves = leaveHistory.filter(iz => iz && (iz.status_persetujuan === 'Approved' || iz.status_persetujuan === 'Approved_HOD'));
+    let checkDate = new Date(cutOff.startDate);
+    while (checkDate < todayDate) {
+      const checkYMD = normalizeDateToYMD(checkDate);
+      if (checkYMD < todayYMD) {
+        const rDay = rosterList.find(r => r && String(r.nik).trim() === String(nik).trim() && normalizeDateToYMD(r.tanggal) === checkYMD);
+        if (rDay) {
+          const rShift = (rDay.id_shift || rDay.status_hari || '').toString().trim().toUpperCase();
+          if (rShift !== '' && !['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(rShift) && !rShift.includes('OFF') && !rShift.includes('LIBUR')) {
+            const hasAtt = absensi.some(a => a && String(a.nik).trim() === String(nik).trim() && normalizeDateToYMD(a.tanggal) === checkYMD && a.jam_masuk && a.jam_masuk !== '');
+            if (!hasAtt) {
+              const hasLeave = approvedLeaves.some(iz => {
+                const sYMD = normalizeDateToYMD(iz.tanggal_mulai);
+                const eYMD = normalizeDateToYMD(iz.tanggal_selesai || iz.tanggal_mulai);
+                return sYMD && sYMD <= checkYMD && (eYMD ? eYMD >= checkYMD : sYMD >= checkYMD);
+              });
+              if (!hasLeave) {
+                alpaDates.push(Utilities.formatDate(checkDate, 'Asia/Jakarta', 'dd/MM/yyyy'));
+              }
+            }
+          }
+        }
+      }
+      checkDate.setDate(checkDate.getDate() + 1);
     }
 
     return {
@@ -1134,6 +1534,7 @@ function getKaryawanDashboard(nik, monthYear) {
       history: personalHistory,
       announcements: announcements,
       todayShiftInfo: shiftInfo,
+      isOffToday: isOffToday,
       leaveHistory: leaveHistory,
       personalRoster: personalRosterWithDetails,
       holidays: holidaysMap,
@@ -1141,9 +1542,177 @@ function getKaryawanDashboard(nik, monthYear) {
         startIso: cutOff.startIsoStr,
         endIso: cutOff.endIsoStr
       },
+      alpaDates: alpaDates,
+      hasAlpaWarning: alpaDates.length > 0,
       todayBirthdays: getTodayBirthdaysList()
     };
   } catch (err) {
+    return { success: false, message: err.toString() };
+  }
+}
+
+/**
+ * Monitoring Karyawan Belum Hadir / Terlambat / Potensi Alpa Hari Ini
+ * Membandingkan jadwal roster kerja aktif vs presensi masuk vs izin resmi
+ */
+function getUnattendedEmployeesToday(targetDept) {
+  try {
+    const todayDate = new Date();
+    const todayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
+    const isoTodayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'yyyy-MM-dd');
+    const yesterdayDate = new Date(todayDate.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayStr = Utilities.formatDate(yesterdayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
+
+    const todayYMD = normalizeDateToYMD(todayDate);
+    const yesterdayYMD = normalizeDateToYMD(yesterdayDate);
+
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+    const rosterList = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
+    const shifts = getSheetDataAsObjects(CONFIG.SHEET_SHIFT) || [];
+    const absensi = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
+    const allIzin = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+
+    // Filter staf operasional aktif
+    const activeStaff = employees.filter(e => {
+      if (!e || e.status_akun !== 'Approved' || e.status_kerja === 'Resign') return false;
+      const roleStr = (e.role || '').toString().toLowerCase();
+      if (roleStr.includes('admin')) return false;
+      if (targetDept && e.departemen !== targetDept) return false;
+      return true;
+    });
+
+    const unattendedList = [];
+
+    activeStaff.forEach(emp => {
+      const nik = String(emp.nik).trim();
+
+      // 1. Cek apakah sudah absen masuk hari ini atau sesi shift malam kemarin masih berjalan
+      const hasClockedInToday = absensi.some(a => a && String(a.nik).trim() === nik && normalizeDateToYMD(a.tanggal) === todayYMD && a.jam_masuk && a.jam_masuk !== '');
+      const hasOvernightActive = absensi.some(a => a && String(a.nik).trim() === nik && normalizeDateToYMD(a.tanggal) === yesterdayYMD && a.jam_masuk && a.jam_masuk !== '' && (!a.jam_pulang || a.jam_pulang === ''));
+      if (hasClockedInToday || hasOvernightActive) {
+        return; // Sudah bertugas
+      }
+
+      // 2. Cek jadwal roster hari ini
+      const rosterToday = rosterList.find(r => r && String(r.nik).trim() === nik && normalizeDateToYMD(r.tanggal) === todayYMD);
+      let rawShiftCode = rosterToday ? (rosterToday.id_shift || rosterToday.status_hari || '').toString().trim() : '';
+      let shiftCode = rawShiftCode.toUpperCase();
+
+      // Abaikan jika status hari libur / cuti
+      if (['OFF', 'CT', 'PH', 'EO', 'S', 'I', 'CK'].includes(shiftCode) || shiftCode.includes('OFF') || shiftCode.includes('LIBUR')) {
+        return;
+      }
+
+      // 3. Cek izin/cuti resmi yang sudah disetujui
+      const hasApprovedLeave = allIzin.some(i => {
+        if (!i || String(i.nik).trim() !== nik) return false;
+        const status = (i.status_persetujuan || '').toString();
+        if (status !== 'Approved' && status !== 'Approved_HOD') return false;
+        const sYMD = normalizeDateToYMD(i.tanggal_mulai);
+        const eYMD = normalizeDateToYMD(i.tanggal_selesai || i.tanggal_mulai);
+        if (!sYMD) return false;
+        return (sYMD <= todayYMD && (eYMD ? eYMD >= todayYMD : sYMD >= todayYMD));
+      });
+      if (hasApprovedLeave) {
+        return;
+      }
+
+      // 4. Informasi Shift
+      let shiftObj = null;
+      let shiftDisplay = 'Jadwal Reguler';
+      let jamMasukJadwal = '';
+
+      if (rawShiftCode) {
+        shiftObj = shifts.find(s => s && String(s.id_shift).trim().toUpperCase() === shiftCode);
+        if (shiftObj) {
+          shiftDisplay = (shiftObj.nama_shift || rawShiftCode) + (shiftObj.jam_masuk ? (' (' + shiftObj.jam_masuk + ' - ' + (shiftObj.jam_pulang || '') + ')') : '');
+          jamMasukJadwal = shiftObj.jam_masuk || '';
+        } else {
+          shiftDisplay = rawShiftCode;
+        }
+      } else {
+        const defShift = shifts[0];
+        if (defShift) {
+          shiftDisplay = (defShift.nama_shift || 'Shift Default') + (defShift.jam_masuk ? (' (' + defShift.jam_masuk + ' - ' + (defShift.jam_pulang || '') + ')') : '');
+          jamMasukJadwal = defShift.jam_masuk || '';
+        }
+      }
+
+      // 5. Cek keterlambatan jam masuk
+      let isOverdue = false;
+      let statusKeterangan = 'Belum Hadir';
+
+      if (jamMasukJadwal && jamMasukJadwal.includes(':')) {
+        const [inHour, inMin] = jamMasukJadwal.split(':').map(Number);
+        const schedTime = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate(), inHour, inMin, 0);
+        const toleranceMs = (shiftObj && shiftObj.toleransi_terlambat_menit ? parseInt(shiftObj.toleransi_terlambat_menit, 10) : 15) * 60 * 1000;
+        
+        if (todayDate.getTime() > schedTime.getTime() + toleranceMs) {
+          isOverdue = true;
+          const minsLate = Math.round((todayDate.getTime() - schedTime.getTime()) / 60000);
+          statusKeterangan = 'Terlambat ' + minsLate + 'm (Potensi ALPA)';
+        } else if (todayDate.getTime() >= schedTime.getTime()) {
+          statusKeterangan = 'Masa Toleransi Masuk';
+        } else {
+          statusKeterangan = 'Shift Belum Mulai';
+        }
+      } else {
+        statusKeterangan = 'Belum Ada Jam Shift Pasti';
+      }
+
+      // WhatsApp direct link generator
+      const rawPhone = (emp.no_telp || '').toString().trim();
+      let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+      if (cleanPhone.startsWith('0')) {
+        cleanPhone = '62' + cleanPhone.substring(1);
+      } else if (cleanPhone && !cleanPhone.startsWith('62')) {
+        cleanPhone = '62' + cleanPhone;
+      }
+
+      let waUrl = '';
+      if (cleanPhone.length >= 9) {
+        const waMsg = 'Halo Rekan ' + emp.nama + ', Anda terjadwal masuk shift: ' + shiftDisplay + ' hari ini di The Balcone Suites & Resort namun belum tercatat presensi di sistem. Mohon konfirmasi kehadiran atau kendala Anda. Terima kasih.';
+        waUrl = 'https://wa.me/' + cleanPhone + '?text=' + encodeURIComponent(waMsg);
+      }
+
+      unattendedList.push({
+        nik: emp.nik,
+        nama: emp.nama || 'Tanpa Nama',
+        departemen: emp.departemen || '-',
+        jabatan: emp.jabatan || '-',
+        no_telp: emp.no_telp || '',
+        shift: shiftDisplay,
+        jam_masuk_jadwal: jamMasukJadwal,
+        status_keterangan: statusKeterangan,
+        is_overdue: isOverdue,
+        wa_url: waUrl
+      });
+    });
+
+    unattendedList.sort((a, b) => (b.is_overdue === true ? 1 : 0) - (a.is_overdue === true ? 1 : 0));
+    return unattendedList;
+  } catch (err) {
+    Logger.log('Error getUnattendedEmployeesToday: ' + err.toString());
+    return [];
+  }
+}
+
+/**
+ * Audit Otomatis Harian Staf ALPA (Dapat dipanggil via Daily Trigger Apps Script / UI Admin)
+ */
+function auditDailyUnattendedEmployees() {
+  try {
+    const unattended = getUnattendedEmployeesToday(null);
+    const overdueStaff = unattended.filter(u => u && u.is_overdue);
+    Logger.log('Audit ALPA Harian: Ditemukan ' + overdueStaff.length + ' staf berpotensi ALPA dari total ' + unattended.length + ' yang belum hadir.');
+    return {
+      success: true,
+      totalUnattended: unattended.length,
+      overdueCount: overdueStaff.length,
+      overdueStaff: overdueStaff
+    };
+  } catch (err) {
+    Logger.log('Error auditDailyUnattendedEmployees: ' + err.toString());
     return { success: false, message: err.toString() };
   }
 }
@@ -1183,13 +1752,15 @@ function getHODDashboard(nik, departemen) {
     getOrCreateTukarShiftSheet(ss);
     const allTukar = getSheetDataAsObjects(CONFIG.SHEET_TUKAR_SHIFT) || [];
     const pendingTukarShiftHOD = allTukar.filter(t => t && t.departemen === departemen && t.status === 'Pending_HOD').reverse();
+    const deptUnattendedToday = getUnattendedEmployeesToday(departemen);
 
     return {
       success: true,
       deptEmployees: deptEmployees,
       pendingIzinHOD: pendingIzinHOD,
       pendingTukarShiftHOD: pendingTukarShiftHOD,
-      deptIzinHistory: deptIzinHistory
+      deptIzinHistory: deptIzinHistory,
+      deptUnattendedToday: deptUnattendedToday
     };
   } catch (err) {
     return { success: false, message: err.toString() };
@@ -1218,9 +1789,13 @@ function getAdminDashboard() {
     });
 
     const todayAbsensi = absensi.filter(a => a && a.tanggal === todayStr);
-    const totalHadirToday = todayAbsensi.filter(a => a && (a.status === 'Tepat Waktu' || a.status === 'Terlambat')).length;
-    const totalTerlambatToday = todayAbsensi.filter(a => a && a.status === 'Terlambat').length;
+    const totalHadirToday = todayAbsensi.filter(a => a && a.jam_masuk && a.jam_masuk !== '').length;
+    const totalTerlambatToday = todayAbsensi.filter(a => a && a.status && a.status.toString().includes('Terlambat')).length;
+    const totalPulangCepatToday = todayAbsensi.filter(a => a && a.status && a.status.toString().includes('Pulang Cepat')).length;
     
+    const unattendedToday = getUnattendedEmployeesToday(null);
+    const totalUnattendedToday = unattendedToday.filter(u => u.is_overdue).length;
+
     const mappedIzinList = izinList.map(i => {
       if (!i) return {};
       const emp = karyawan.find(e => e && e.nik === i.nik) || {};
@@ -1231,9 +1806,24 @@ function getAdminDashboard() {
       };
     });
 
-    const pendingIzinHRD = mappedIzinList.filter(i => i && (i.status_persetujuan === 'Pending_HRD' || i.status_persetujuan === 'Pending'));
+    const pendingIzinHRD = mappedIzinList.filter(i => {
+      if (!i) return false;
+      if (i.status_persetujuan === 'Pending_HRD' || i.status_persetujuan === 'Pending') return true;
+      // Self-healing: jika ada izin HOD yang terlanjur tercatat Pending_HOD, alihkan otomatis ke Admin
+      if (i.status_persetujuan === 'Pending_HOD') {
+        const emp = karyawan.find(e => e && e.nik === i.nik);
+        const role = (emp && emp.role ? emp.role : '').toLowerCase();
+        if (role.includes('hod') || role.includes('admin')) return true;
+      }
+      return false;
+    });
     const pendingKaryawan = karyawan.filter(k => k && k.status_akun === 'Pending');
     const pendingEditProfil = editProfilList.filter(e => e && e.status_persetujuan === 'Pending');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    getOrCreateResetDeviceSheet(ss);
+    const allResetReqs = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
+    const pendingResetDevice = allResetReqs.filter(r => r && r.status === 'Pending').reverse();
 
     return {
       success: true,
@@ -1241,14 +1831,19 @@ function getAdminDashboard() {
         totalKaryawan: operationalEmployees.filter(k => k && k.status_akun === 'Approved' && (k.status_kerja !== 'Resign')).length,
         totalHadirToday: totalHadirToday,
         totalTerlambatToday: totalTerlambatToday,
+        totalPulangCepatToday: totalPulangCepatToday,
+        totalUnattendedToday: totalUnattendedToday,
         totalPendingIzin: pendingIzinHRD.length,
         totalPendingKaryawan: pendingKaryawan.length,
-        totalPendingEditProfil: pendingEditProfil.length
+        totalPendingEditProfil: pendingEditProfil.length,
+        totalPendingResetDevice: pendingResetDevice.length
       },
+      unattendedToday: unattendedToday,
       pendingIzin: pendingIzinHRD,
       allIzin: mappedIzinList,
       pendingKaryawan: pendingKaryawan,
       pendingEditProfil: pendingEditProfil,
+      pendingResetDevice: pendingResetDevice,
       karyawanList: operationalEmployees,
       announcements: announcements,
       todayBirthdays: getTodayBirthdaysList()
@@ -1824,7 +2419,8 @@ function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
     const isIzinJam = (jenis || '').toString().toLowerCase().includes('jam');
 
     let initialStatus = 'Pending_HOD';
-    if (!isIzinJam && (empRoleLower.includes('hod') || empRoleLower.includes('admin'))) {
+    // Seluruh pengajuan oleh HOD atau Admin (termasuk Izin Jam-Jaman) LANGSUNG ke Admin HRD
+    if (empRoleLower.includes('hod') || empRoleLower.includes('admin')) {
       initialStatus = 'Pending_HRD';
     }
 
