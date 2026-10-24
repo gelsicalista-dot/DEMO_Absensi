@@ -2066,6 +2066,16 @@
                                     <option value="ALL">Semua Departemen</option>
                                 </select>
                             </div>
+                            <div class="w-full sm:w-48 pt-0 sm:pt-4">
+                                <div class="relative">
+                                    <input type="text" id="resume-kpi-search-name"
+                                        onkeyup="if(event.key==='Enter') loadAttendanceResume()"
+                                        placeholder="Cari NIK / Nama..."
+                                        class="w-full pl-8 pr-3 py-1.5 border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-600 bg-white text-slate-700 font-semibold"
+                                        title="Cari NIK atau Nama Karyawan">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+                                </div>
+                            </div>
                             <div class="pt-0 sm:pt-4 flex items-center gap-2">
                                 <button onclick="loadAttendanceResume()"
                                     class="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition active:scale-95">
@@ -6281,10 +6291,12 @@
             const startInput = document.getElementById('resume-kpi-start-date');
             const endInput = document.getElementById('resume-kpi-end-date');
             const deptSelect = document.getElementById('resume-kpi-filter-dept');
+            const searchInput = document.getElementById('resume-kpi-search-name');
 
             const startDate = startInput ? startInput.value.trim() : '';
             const endDate = endInput ? endInput.value.trim() : '';
             const filterDept = deptSelect ? deptSelect.value : 'ALL';
+            const searchKey = searchInput ? searchInput.value.trim() : '';
 
             const tbodyAtt = document.getElementById('table-resume-attendance-data');
             const tbodyLeave = document.getElementById('table-resume-leave-data');
@@ -6295,7 +6307,7 @@
                 tbodyLeave.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat rincian cuti & izin...</td></tr>';
             }
 
-            runBackend('getAttendanceAndLeaveResume', [startDate, endDate, filterDept], function (res) {
+            runBackend('getAttendanceAndLeaveResume', [startDate, endDate, filterDept, searchKey], function (res) {
                 if (!res || !res.success) {
                     if (tbodyAtt) tbodyAtt.innerHTML = '<tr><td colspan="11" class="p-6 text-center text-rose-500 font-semibold">' + (res ? res.message : 'Gagal memuat resume kehadiran') + '</td></tr>';
                     if (tbodyLeave) tbodyLeave.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-rose-500 font-semibold">' + (res ? res.message : 'Gagal memuat rincian cuti') + '</td></tr>';
@@ -6415,10 +6427,12 @@
             const startInput = document.getElementById('resume-kpi-start-date');
             const endInput = document.getElementById('resume-kpi-end-date');
             const deptSelect = document.getElementById('resume-kpi-filter-dept');
+            const searchInput = document.getElementById('resume-kpi-search-name');
 
             if (startInput) startInput.value = '';
             if (endInput) endInput.value = '';
             if (deptSelect) deptSelect.value = 'ALL';
+            if (searchInput) searchInput.value = '';
 
             initAttendanceResumeDateRange();
             loadAttendanceResume();
@@ -6429,10 +6443,12 @@
             const startInput = document.getElementById('resume-kpi-start-date');
             const endInput = document.getElementById('resume-kpi-end-date');
             const deptSelect = document.getElementById('resume-kpi-filter-dept');
+            const searchInput = document.getElementById('resume-kpi-search-name');
 
             const startDate = startInput ? startInput.value.trim() : '';
             const endDate = endInput ? endInput.value.trim() : '';
             const filterDept = deptSelect ? deptSelect.value : 'ALL';
+            const searchKey = searchInput ? searchInput.value.trim() : '';
 
             const btn = document.getElementById('btn-export-pdf-resume');
             let origHTML = '';
@@ -6443,7 +6459,7 @@
             }
 
             showToast('Menyusun PDF Resume Kehadiran & Cuti...', 'info');
-            runBackend('generateResumeAttendancePDFReport', [startDate, endDate, filterDept], function (res) {
+            runBackend('generateResumeAttendancePDFReport', [startDate, endDate, filterDept, searchKey], function (res) {
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = origHTML;

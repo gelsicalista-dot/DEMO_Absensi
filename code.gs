@@ -96,11 +96,11 @@ function doPost(e) {
     } else if (action === 'calculateMonthlyKPI') {
       result = calculateMonthlyKPI(payload[0]);
     } else if (action === 'getAttendanceAndLeaveResume') {
-      result = getAttendanceAndLeaveResume(payload[0], payload[1], payload[2]);
+      result = getAttendanceAndLeaveResume(payload[0], payload[1], payload[2], payload[3]);
     } else if (action === 'auditDailyUnattendedEmployees') {
       result = auditDailyUnattendedEmployees();
     } else if (action === 'generateResumeAttendancePDFReport') {
-      result = generateResumeAttendancePDFReport(payload[0], payload[1], payload[2]);
+      result = generateResumeAttendancePDFReport(payload[0], payload[1], payload[2], payload[3]);
     } else if (action === 'getGlobalAttendanceList') {
       result = getGlobalAttendanceList(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
     } else if (action === 'generateAttendancePDFReport') {
@@ -3458,7 +3458,7 @@ function calculateMonthlyKPI(bulanTahun) {
   }
 }
 
-function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
+function getAttendanceAndLeaveResume(startDate, endDate, filterDept, searchKey) {
   try {
     const employeesAll = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
     let karyawan = employeesAll.filter(k => {
@@ -3469,6 +3469,14 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
 
     if (filterDept && filterDept !== 'ALL') {
       karyawan = karyawan.filter(k => k.departemen === filterDept);
+    }
+
+    if (searchKey && searchKey.trim() !== '') {
+      const key = searchKey.toLowerCase().trim();
+      karyawan = karyawan.filter(k => 
+        (k.nama && k.nama.toLowerCase().includes(key)) ||
+        (k.nik && k.nik.toLowerCase().includes(key))
+      );
     }
 
     // Default ke cutoff berjalan jika kosong
@@ -3535,6 +3543,12 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
     approvedIzin.forEach(iz => {
       const emp = employeesAll.find(e => e && e.nik === iz.nik);
       if (filterDept && filterDept !== 'ALL' && emp && emp.departemen !== filterDept) return;
+      if (searchKey && searchKey.trim() !== '') {
+        const key = searchKey.toLowerCase().trim();
+        const n = (emp ? emp.nama : (iz.nama || '')).toLowerCase();
+        const nik = (iz.nik || '').toLowerCase();
+        if (!n.includes(key) && !nik.includes(key)) return;
+      }
 
       const jenisLower = (iz.jenis || '').toString().toLowerCase();
       let kategoriKode = 'I';
@@ -3715,6 +3729,7 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
       startDate: startDate,
       endDate: endDate,
       filterDept: filterDept || 'ALL',
+      searchKey: searchKey || '',
       summary: {
         totalKaryawan: karyawan.length,
         rataRataKehadiran: rataRataResort,
@@ -3733,9 +3748,9 @@ function getAttendanceAndLeaveResume(startDate, endDate, filterDept) {
   }
 }
 
-function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
+function generateResumeAttendancePDFReport(startDate, endDate, filterDept, searchKey) {
   try {
-    const resumeRes = getAttendanceAndLeaveResume(startDate, endDate, filterDept);
+    const resumeRes = getAttendanceAndLeaveResume(startDate, endDate, filterDept, searchKey);
     if (!resumeRes || !resumeRes.success) {
       return { success: false, message: resumeRes ? resumeRes.message : 'Gagal menghasilkan resume.' };
     }
@@ -3750,6 +3765,7 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
     const dispStart = formatDisplayDateID(startStr);
     const dispEnd = formatDisplayDateID(endStr);
     const deptLabel = (deptStr !== 'ALL') ? deptStr : 'Semua Departemen';
+    const searchLabel = (searchKey && searchKey.trim() !== '') ? (' &bull; Pencarian: <b>\"' + searchKey.trim() + '\"</b>') : '';
 
     let html = '<div style="font-family:Arial, sans-serif; padding:15px; color:#1e293b; font-size:10px;">';
     
@@ -3757,7 +3773,7 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
     html += '<h2 style="text-align:center; color:#1e1b4b; margin:0 0 4px 0; font-size:15px; letter-spacing:0.5px;">THE BALCONE SUITES & RESORT</h2>';
     html += '<h4 style="text-align:center; color:#4338ca; margin:0 0 4px 0; font-size:12px; text-transform:uppercase;">RESUME EVALUASI KEHADIRAN & PENGAMBILAN CUTI KARYAWAN</h4>';
     html += '<p style="text-align:center; font-size:10px; color:#64748b; margin:0 0 14px 0;">' +
-      'Periode: <b>' + dispStart + ' s/d ' + dispEnd + '</b> &bull; Departemen: <b>' + deptLabel + '</b>' +
+      'Periode: <b>' + dispStart + ' s/d ' + dispEnd + '</b> &bull; Departemen: <b>' + deptLabel + '</b>' + searchLabel +
       '</p>';
 
     // Summary Box
@@ -3888,7 +3904,8 @@ function generateResumeAttendancePDFReport(startDate, endDate, filterDept) {
 
     let periodSuffix = startStr + '_sd_' + endStr;
     const safeDeptStr = (deptStr !== 'ALL') ? deptStr + '_' : '';
-    const safeFileTitle = ('Resume_Kehadiran_Cuti_Balcone_' + safeDeptStr + periodSuffix).replace(/[^a-zA-Z0-9]/g, '_');
+    const safeSearchStr = (searchKey && searchKey.trim() !== '') ? (searchKey.trim().replace(/[^a-zA-Z0-9]/g, '_') + '_') : '';
+    const safeFileTitle = ('Resume_Kehadiran_Cuti_Balcone_' + safeDeptStr + safeSearchStr + periodSuffix).replace(/[^a-zA-Z0-9]/g, '_');
     const blob = Utilities.newBlob(html, 'text/html', safeFileTitle + '.html');
     const pdfBlob = blob.getAs('application/pdf');
     const base64Pdf = Utilities.base64Encode(pdfBlob.getBytes());
