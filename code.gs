@@ -1546,14 +1546,17 @@ function buildContinuousAttendanceTimeline(employeesList, startDate, endDate, ab
     const dept = emp.departemen || '-';
 
     // Parse start date
-    let curYear = parseInt(startYMD.substring(0, 4), 10);
-    let curMonth = parseInt(startYMD.substring(4, 6), 10) - 1;
-    let curDay = parseInt(startYMD.substring(6, 8), 10);
+    const sStr = String(startYMD || '');
+    const mStr = String(maxEvalYMD || '');
+    if (sStr.length < 8 || mStr.length < 8) return;
+    let curYear = parseInt(sStr.substring(0, 4), 10);
+    let curMonth = parseInt(sStr.substring(4, 6), 10) - 1;
+    let curDay = parseInt(sStr.substring(6, 8), 10);
     let curDate = new Date(curYear, curMonth, curDay, 12, 0, 0);
 
-    const endYear = parseInt(maxEvalYMD.substring(0, 4), 10);
-    const endMonth = parseInt(maxEvalYMD.substring(4, 6), 10) - 1;
-    const endDay = parseInt(maxEvalYMD.substring(6, 8), 10);
+    const endYear = parseInt(mStr.substring(0, 4), 10);
+    const endMonth = parseInt(mStr.substring(4, 6), 10) - 1;
+    const endDay = parseInt(mStr.substring(6, 8), 10);
     const stopDate = new Date(endYear, endMonth, endDay, 12, 0, 0);
 
     while (curDate <= stopDate) {
@@ -1713,7 +1716,7 @@ function buildContinuousAttendanceTimeline(employeesList, startDate, endDate, ab
   });
 
   // Urutkan seluruh timeline menurun berdasarkan _ymd (terbaru di atas)
-  result.sort((a, b) => (b._ymd || '').localeCompare(a._ymd || ''));
+  result.sort((a, b) => (Number(b._ymd) || 0) - (Number(a._ymd) || 0));
   return result;
 }
 
