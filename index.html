@@ -7343,7 +7343,33 @@
             let badgeClass = 'bg-slate-100 text-slate-700 border border-slate-200 font-semibold';
             let icon = '';
 
-            if (st.includes('Pulang Cepat') || st.includes('Terlambat')) {
+            const sLower = st.toLowerCase();
+
+            if (st.includes('ALPA')) {
+                badgeClass = 'bg-red-100 text-red-800 border border-red-300 font-black';
+                icon = '<i class="fa-solid fa-circle-xmark mr-1 text-red-600"></i>';
+            } else if (st.includes('Tanpa Pulang') || st.includes('Tanpa Absen Pulang')) {
+                badgeClass = 'bg-amber-100 text-amber-900 border border-amber-300 font-bold';
+                icon = '<i class="fa-solid fa-clock-rotate-left mr-1 text-amber-600"></i>';
+            } else if (st === 'Belum Hadir') {
+                badgeClass = 'bg-amber-50 text-amber-700 border border-dashed border-amber-300 font-medium';
+                icon = '<i class="fa-solid fa-hourglass-half mr-1 text-amber-500"></i>';
+            } else if (st.includes('OFF') || st.includes('Libur')) {
+                badgeClass = 'bg-slate-100 text-slate-600 border border-slate-300 font-medium';
+                icon = '<i class="fa-solid fa-bed mr-1 text-slate-400"></i>';
+            } else if (sLower.includes('sales call') || sLower.includes('bukittinggi') || sLower.includes('bogor') || sLower.includes('dinas') || sLower.includes('remote') || st.includes('(SC)') || st.includes('(BKT)') || st.includes('(BGR)')) {
+                badgeClass = 'bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold';
+                icon = '<i class="fa-solid fa-briefcase mr-1 text-indigo-600"></i>';
+            } else if (sLower.includes('sakit')) {
+                badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200 font-semibold';
+                icon = '<i class="fa-solid fa-notes-medical mr-1 text-rose-500"></i>';
+            } else if (sLower.includes('cuti') || sLower.includes('holiday') || sLower.includes('extra off') || st.includes('(CT)') || st.includes('(PH)') || st.includes('(EO)') || st.includes('(CK)')) {
+                badgeClass = 'bg-purple-100 text-purple-800 border border-purple-200 font-bold';
+                icon = '<i class="fa-solid fa-umbrella-beach mr-1 text-purple-600"></i>';
+            } else if (sLower.includes('izin')) {
+                badgeClass = 'bg-sky-100 text-sky-800 border border-sky-200 font-semibold';
+                icon = '<i class="fa-solid fa-file-signature mr-1 text-sky-600"></i>';
+            } else if (st.includes('Pulang Cepat') || st.includes('Terlambat')) {
                 badgeClass = 'bg-rose-100 text-rose-800 border border-rose-300 font-bold';
                 icon = '<i class="fa-solid fa-triangle-exclamation mr-1 text-rose-600"></i>';
             } else if (st.includes('Tepat Waktu')) {
