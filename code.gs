@@ -20,8 +20,7 @@ const CONFIG = {
   SHEET_GAJI_MASTER: 'Tabel_Gaji_Master',
   SHEET_PAYROLL_BULANAN: 'Tabel_Payroll_Bulanan',
   SHEET_PINJAMAN: 'Tabel_Pinjaman_Karyawan',
-  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift',
-  SHEET_RESET_DEVICE: 'Tabel_Reset_Perangkat'
+  SHEET_TUKAR_SHIFT: 'Tabel_Tukar_Shift'
 };
 
 /**
@@ -69,12 +68,6 @@ function doPost(e) {
       result = loginUser(payload[0], payload[1], payload[2]);
     } else if (action === 'resetDeviceLock') {
       result = resetDeviceLock(payload[0]);
-    } else if (action === 'requestDeviceReset') {
-      result = requestDeviceReset(payload[0], payload[1], payload[2]);
-    } else if (action === 'approveDeviceReset') {
-      result = approveDeviceReset(payload[0], payload[1]);
-    } else if (action === 'syncOfflineAttendance') {
-      result = syncOfflineAttendance(payload[0]);
     } else if (action === 'registerKaryawan') {
       result = registerKaryawan(payload[0]);
     } else if (action === 'approveKaryawan') {
@@ -82,7 +75,7 @@ function doPost(e) {
     } else if (action === 'setEmployeeResign') {
       result = setEmployeeResign(payload[0], payload[1], payload[2]);
     } else if (action === 'processAbsensi') {
-      result = processAbsensi(payload[0], payload[1], payload[2], payload[3], payload[4], payload[5]);
+      result = processAbsensi(payload[0], payload[1], payload[2], payload[3], payload[4]);
     } else if (action === 'getKaryawanDashboard') {
       result = getKaryawanDashboard(payload[0], payload[1]);
     } else if (action === 'getHODDashboard') {
@@ -416,7 +409,6 @@ function getSheetData(sheetName) {
 
 /**
  * Safe Object Array Reader - Mencegah TypeError saat iterasi
- * Menerapkan Standar Rekayasa ZettBOT: Normalisasi header & Index-Based Fallback Mapping
  */
 function getSheetDataAsObjects(sheetName) {
   try {
@@ -427,26 +419,8 @@ function getSheetDataAsObjects(sheetName) {
     return rows.map(row => {
       let obj = {};
       headers.forEach((header, index) => {
-        const val = (row && row[index] !== undefined) ? row[index] : '';
-        obj[header] = val;
-        // Key normalisasi lowercase & underscore agar kebal perbedaan kapitalisasi
-        const cleanKey = (header || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
-        if (cleanKey && obj[cleanKey] === undefined) {
-          obj[cleanKey] = val;
-        }
+        obj[header] = (row && row[index] !== undefined) ? row[index] : '';
       });
-
-      // Standar ZettBOT: Index-Based Fallback untuk Sheet Karyawan
-      if (sheetName === CONFIG.SHEET_KARYAWAN) {
-        if (!obj.nik && row[0]) obj.nik = row[0];
-        if (!obj.nama && row[1]) obj.nama = row[1];
-        if (!obj.no_telp && row[2]) obj.no_telp = row[2];
-        if (!obj.password && row[3]) obj.password = row[3];
-        if (!obj.role && row[4]) obj.role = row[4];
-        if (!obj.no_identitas && row[6]) obj.no_identitas = row[6];
-        if (!obj.device_id && row[21]) obj.device_id = row[21];
-      }
-
       return obj;
     });
   } catch (err) {
@@ -642,159 +616,15 @@ function getTodayBirthdaysList() {
   }
 }
 
-function getOrCreateResetDeviceSheet(ss) {
-  let sheet = ss.getSheetByName(CONFIG.SHEET_RESET_DEVICE);
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.SHEET_RESET_DEVICE);
-    sheet.appendRow(['id_request', 'nik', 'nama', 'alasan', 'tanggal_request', 'status', 'hardware_info']);
-    SpreadsheetApp.flush();
-  }
-  return sheet;
-}
-
-function requestDeviceReset(nik, alasan, hwInfo) {
-  try {
-    const inputClean = (nik || '').toString().trim();
-    if (!inputClean) {
-      return { success: false, message: 'NIK atau No. Telepon tidak boleh kosong.' };
-    }
-
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
-    const cleanedPhone = sanitizePhone(inputClean);
-    const inputCleanLower = inputClean.toLowerCase();
-    const inputDigitsOnly = inputClean.replace(/[^0-9]/g, '');
-
-    // Pencarian 5-Lapis Multi-Identifier (NIK, No. Telepon, Nama Karyawan, No. Identitas KTP)
-    const emp = employees.find(e => {
-      if (!e) return false;
-      const dbNik = (e.nik || '').toString().trim().toLowerCase();
-      const rawPhone = (e.no_telp || '').toString().trim();
-      const dbPhone = sanitizePhone(e.no_telp);
-      const dbPhoneDigits = rawPhone.replace(/[^0-9]/g, '');
-      const dbNama = (e.nama || '').toString().trim().toLowerCase();
-      const dbKtp = (e.no_identitas || '').toString().trim().toLowerCase();
-
-      // 1. Cocokkan NIK
-      if (dbNik && dbNik === inputCleanLower) return true;
-
-      // 2. Cocokkan No. Telepon tersanitasi (awalan 08, 628, +62)
-      if (cleanedPhone && dbPhone && dbPhone === cleanedPhone) return true;
-      if (rawPhone && rawPhone.toLowerCase() === inputCleanLower) return true;
-
-      // 3. Cocokkan digit telepon (mengakomodasi variasi awalan atau penghapusan angka 0 di Google Sheets)
-      if (inputDigitsOnly.length >= 8 && dbPhoneDigits.length >= 8) {
-        if (dbPhoneDigits === inputDigitsOnly || 
-            dbPhoneDigits.endsWith(inputDigitsOnly) || 
-            inputDigitsOnly.endsWith(dbPhoneDigits)) {
-          return true;
-        }
-      }
-
-      // 4. Cocokkan Nama Karyawan / Username
-      if (dbNama && dbNama === inputCleanLower) return true;
-
-      // 5. Cocokkan No. Identitas KTP
-      if (dbKtp && dbKtp === inputCleanLower) return true;
-
-      return false;
-    });
-
-    if (!emp) {
-      return { 
-        success: false, 
-        message: 'Data karyawan dengan NIK / No. Telepon "' + inputClean + '" tidak ditemukan di database. Pastikan nomor HP / NIK Anda sesuai dengan yang terdaftar di HR Balcone.' 
-      };
-    }
-
-    const realNik = emp.nik;
-    const realNama = emp.nama || 'Karyawan';
-
-    const sheetReset = getOrCreateResetDeviceSheet(ss);
-    const existing = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
-    const pendingReq = existing.find(r => r && (r.nik === realNik || r.nik === inputClean) && r.status === 'Pending');
-    if (pendingReq) {
-      return { 
-        success: true, 
-        message: 'Pengajuan reset perangkat untuk ' + realNama + ' (' + realNik + ') sudah tercatat dan sedang menunggu verifikasi Admin HR.' 
-      };
-    }
-
-    const newId = 'RST-' + Date.now().toString().slice(-6);
-    const tglStr = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-    sheetReset.appendRow([
-      newId,
-      realNik,
-      realNama,
-      alasan || 'Ganti smartphone / reset browser',
-      tglStr,
-      'Pending',
-      hwInfo || ''
-    ]);
-    SpreadsheetApp.flush();
-
-    return { 
-      success: true, 
-      message: 'Permohonan reset perangkat untuk ' + realNama + ' (' + realNik + ') berhasil dikirim ke Admin HR!' 
-    };
-  } catch (err) {
-    return { success: false, message: 'Gagal mengajukan permohonan reset: ' + err.toString() };
-  }
-}
-
-function approveDeviceReset(idRequest, isApproved) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheetReset = getOrCreateResetDeviceSheet(ss);
-    const requests = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
-    const index = requests.findIndex(r => r && (r.id_request === idRequest || r.nik === idRequest));
-    if (index === -1) return { success: false, message: 'Data pengajuan reset tidak ditemukan.' };
-
-    const req = requests[index];
-    const rowNum = index + 2;
-    const newStatus = isApproved ? 'Approved' : 'Rejected';
-    sheetReset.getRange(rowNum, 6).setValue(newStatus);
-    SpreadsheetApp.flush();
-
-    if (isApproved) {
-      resetDeviceLock(req.nik);
-    }
-
-    return { 
-      success: true, 
-      message: isApproved 
-        ? 'Permohonan reset perangkat untuk ' + req.nama + ' (' + req.nik + ') disetujui! Kunci perangkat telah dibuka.' 
-        : 'Permohonan reset perangkat ditolak.' 
-    };
-  } catch (err) {
-    return { success: false, message: 'Gagal memproses permohonan: ' + err.toString() };
-  }
-}
-
 function resetDeviceLock(nik) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetKaryawan = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
     if (!sheetKaryawan) return { success: false, message: 'Sheet karyawan tidak ditemukan.' };
 
-    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
-    const targetClean = (nik || '').toString().trim().toLowerCase();
-    const targetPhone = sanitizePhone(nik);
-    const targetDigits = (nik || '').toString().replace(/[^0-9]/g, '');
-
-    const index = employees.findIndex(e => {
-      if (!e) return false;
-      const dbNik = (e.nik || '').toString().trim().toLowerCase();
-      const dbPhone = sanitizePhone(e.no_telp);
-      const dbDigits = (e.no_telp || '').toString().replace(/[^0-9]/g, '');
-
-      if (dbNik && dbNik === targetClean) return true;
-      if (targetPhone && dbPhone && dbPhone === targetPhone) return true;
-      if (targetDigits.length >= 8 && dbDigits.length >= 8 && (dbDigits === targetDigits || dbDigits.endsWith(targetDigits) || targetDigits.endsWith(dbDigits))) return true;
-      return false;
-    });
-
-    if (index === -1) return { success: false, message: 'Karyawan dengan NIK / No. Telepon ' + nik + ' tidak ditemukan.' };
+    const employees = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN);
+    const index = employees.findIndex(e => e.nik === nik);
+    if (index === -1) return { success: false, message: 'Karyawan dengan NIK ' + nik + ' tidak ditemukan.' };
 
     const headers = sheetKaryawan.getRange(1, 1, 1, Math.max(sheetKaryawan.getLastColumn(), 22)).getDisplayValues()[0];
     let devColIndex = headers.indexOf('device_id');
@@ -809,7 +639,7 @@ function resetDeviceLock(nik) {
 
     return { 
       success: true, 
-      message: 'Kunci perangkat karyawan ' + employees[index].nama + ' (' + employees[index].nik + ') berhasil direset! Karyawan sekarang dapat login di perangkat baru.' 
+      message: 'Kunci perangkat karyawan ' + employees[index].nama + ' (' + nik + ') berhasil direset! Karyawan sekarang dapat login di perangkat baru.' 
     };
   } catch (err) {
     return { success: false, message: 'Gagal mereset perangkat: ' + err.toString() };
@@ -868,16 +698,6 @@ function loginUser(noTelp, password, clientDeviceId) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetKaryawan = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
 
-      // Parse token client (UUID + Hardware Fingerprint)
-      const clientParts = clientDeviceId.toString().split(':::');
-      const clientUUID = clientParts[0].trim();
-      const clientHwFp = clientParts.length > 1 ? clientParts[1].trim() : '';
-
-      // Parse registered device token
-      const regParts = registeredDevice.split(':::');
-      const regUUID = regParts[0].trim();
-      const regHwFp = regParts.length > 1 ? regParts[1].trim() : '';
-
       // Jika kolom device_id belum ada / kosong -> Kunci perangkat pertama kali
       if (!registeredDevice) {
         if (sheetKaryawan && userIndex !== -1) {
@@ -891,38 +711,18 @@ function loginUser(noTelp, password, clientDeviceId) {
           sheetKaryawan.getRange(rowNum, devColIndex + 1).setNumberFormat('@').setValue(clientDeviceId);
           SpreadsheetApp.flush();
         }
-      } else {
-        // Evaluasi kecocokan: UUID sama ATAU Hardware Fingerprint sama
-        const isUUIDMatch = (regUUID && clientUUID && regUUID === clientUUID);
-        const isHwMatch = (regHwFp && clientHwFp && regHwFp === clientHwFp);
-
-        if (isUUIDMatch || isHwMatch) {
-          // Self-Healing: Jika UUID terhapus oleh cleaner HP tapi hardware sama persis, perbarui UUID
-          if (!isUUIDMatch && isHwMatch && sheetKaryawan && userIndex !== -1) {
-            const rowNum = userIndex + 2;
-            const headers = sheetKaryawan.getRange(1, 1, 1, Math.max(sheetKaryawan.getLastColumn(), 22)).getDisplayValues()[0];
-            let devColIndex = headers.indexOf('device_id');
-            if (devColIndex !== -1) {
-              sheetKaryawan.getRange(rowNum, devColIndex + 1).setNumberFormat('@').setValue(clientDeviceId);
-              SpreadsheetApp.flush();
-            }
-          }
-        } else {
-          // Benar-benar perangkat lain
-          return {
-            success: false,
-            isDeviceLocked: true,
-            nik: user.nik,
-            nama: user.nama,
-            message: 'Akses Ditolak: Akun Anda sudah terdaftar di perangkat lain. Silakan ajukan reset perangkat ke Admin HR jika Anda berganti smartphone.'
-          };
-        }
+      } else if (registeredDevice !== clientDeviceId) {
+        // Perangkat tidak cocok
+        return {
+          success: false,
+          isDeviceLocked: true,
+          message: 'Akses Ditolak: Akun Anda sudah terdaftar di perangkat lain. Silakan hubungi Admin HR untuk membuka kunci perangkat Anda.'
+        };
       }
     }
 
     return {
       success: true,
-      serverTimestamp: Date.now(),
       user: {
         nik: user.nik,
         nama: user.nama,
@@ -1032,7 +832,7 @@ function setEmployeeResign(nik, tglResign, statusKerja) {
   }
 }
 
-function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlineTimestamp) {
+function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetSettings = ss.getSheetByName(CONFIG.SHEET_PENGATURAN);
@@ -1061,7 +861,7 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlin
       };
     }
 
-    const todayDate = offlineTimestamp ? new Date(Number(offlineTimestamp)) : new Date();
+    const todayDate = new Date();
     const todayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
     const isoTodayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'yyyy-MM-dd');
     const timeStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'HH:mm:ss');
@@ -1196,36 +996,6 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlin
 
   } catch (err) {
     return { success: false, message: 'Gagal memproses absensi: ' + err.toString() };
-  }
-}
-
-function syncOfflineAttendance(items) {
-  try {
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return { success: true, syncedCount: 0, totalCount: 0, message: 'Tidak ada data antrean absensi offline.' };
-    }
-    let successCount = 0;
-    let errorMsgs = [];
-    items.forEach(item => {
-      try {
-        const res = processAbsensi(item.nik, item.lat, item.lng, item.qrSecretCode, item.actionType, item.timestamp);
-        if (res && res.success) {
-          successCount++;
-        } else {
-          errorMsgs.push(res ? res.message : 'Gagal');
-        }
-      } catch (e) {
-        errorMsgs.push(e.toString());
-      }
-    });
-    return {
-      success: successCount > 0,
-      syncedCount: successCount,
-      totalCount: items.length,
-      message: successCount + ' dari ' + items.length + ' absensi offline berhasil disinkronkan ke server.' + (errorMsgs.length > 0 ? ' (' + errorMsgs[0] + ')' : '')
-    };
-  } catch (err) {
-    return { success: false, message: 'Gagal sinkronisasi offline: ' + err.toString() };
   }
 }
 
@@ -1461,24 +1231,9 @@ function getAdminDashboard() {
       };
     });
 
-    const pendingIzinHRD = mappedIzinList.filter(i => {
-      if (!i) return false;
-      if (i.status_persetujuan === 'Pending_HRD' || i.status_persetujuan === 'Pending') return true;
-      // Self-healing: jika ada izin HOD yang terlanjur tercatat Pending_HOD, alihkan otomatis ke Admin
-      if (i.status_persetujuan === 'Pending_HOD') {
-        const emp = karyawan.find(e => e && e.nik === i.nik);
-        const role = (emp && emp.role ? emp.role : '').toLowerCase();
-        if (role.includes('hod') || role.includes('admin')) return true;
-      }
-      return false;
-    });
+    const pendingIzinHRD = mappedIzinList.filter(i => i && (i.status_persetujuan === 'Pending_HRD' || i.status_persetujuan === 'Pending'));
     const pendingKaryawan = karyawan.filter(k => k && k.status_akun === 'Pending');
     const pendingEditProfil = editProfilList.filter(e => e && e.status_persetujuan === 'Pending');
-
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    getOrCreateResetDeviceSheet(ss);
-    const allResetReqs = getSheetDataAsObjects(CONFIG.SHEET_RESET_DEVICE) || [];
-    const pendingResetDevice = allResetReqs.filter(r => r && r.status === 'Pending').reverse();
 
     return {
       success: true,
@@ -1488,14 +1243,12 @@ function getAdminDashboard() {
         totalTerlambatToday: totalTerlambatToday,
         totalPendingIzin: pendingIzinHRD.length,
         totalPendingKaryawan: pendingKaryawan.length,
-        totalPendingEditProfil: pendingEditProfil.length,
-        totalPendingResetDevice: pendingResetDevice.length
+        totalPendingEditProfil: pendingEditProfil.length
       },
       pendingIzin: pendingIzinHRD,
       allIzin: mappedIzinList,
       pendingKaryawan: pendingKaryawan,
       pendingEditProfil: pendingEditProfil,
-      pendingResetDevice: pendingResetDevice,
       karyawanList: operationalEmployees,
       announcements: announcements,
       todayBirthdays: getTodayBirthdaysList()
@@ -2071,8 +1824,7 @@ function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
     const isIzinJam = (jenis || '').toString().toLowerCase().includes('jam');
 
     let initialStatus = 'Pending_HOD';
-    // Seluruh pengajuan oleh HOD atau Admin (termasuk Izin Jam-Jaman) LANGSUNG ke Admin HRD
-    if (empRoleLower.includes('hod') || empRoleLower.includes('admin')) {
+    if (!isIzinJam && (empRoleLower.includes('hod') || empRoleLower.includes('admin'))) {
       initialStatus = 'Pending_HRD';
     }
 
