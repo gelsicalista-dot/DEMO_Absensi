@@ -941,9 +941,11 @@ function loginUser(noTelp, password, clientDeviceId) {
         status_kerja: user.status_kerja || 'Aktif',
         tgl_resign: user.tgl_resign || '',
         tgl_lahir: user.tgl_lahir || '-',
+        tgl_masuk: user.tgl_masuk || '',
         foto: user.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
         kuota_cuti_tahunan: user.kuota_cuti_tahunan,
         sisa_cuti_tahunan: user.sisa_cuti_tahunan,
+        leave_status: calculateEmployeeLeaveStatus(user, new Date()),
         device_id: user.device_id || clientDeviceId || ''
       }
     };
@@ -1933,6 +1935,11 @@ function getKaryawanDashboard(nik, monthYear) {
       shifts
     );
 
+    const leaveStatus = calculateEmployeeLeaveStatus(empObj, todayDate, leaveHistory);
+    if (empObj) {
+      syncEmployeeLeaveBalanceInSheet(nik, leaveStatus.remainingDays);
+    }
+
     return {
       success: true,
       todayRecord: todayRecord,
@@ -1941,6 +1948,7 @@ function getKaryawanDashboard(nik, monthYear) {
       todayShiftInfo: shiftInfo,
       isOffToday: isOffToday,
       leaveHistory: leaveHistory,
+      leaveStatus: leaveStatus,
       personalRoster: personalRosterWithDetails,
       holidays: holidaysMap,
       cutoffInfo: {
@@ -2810,6 +2818,156 @@ function approveKaryawan(nik, actionStatus) {
   }
 }
 
+/**
+ * Format Date ke teks tanggal formal Indonesia (Contoh: 15 Maret 2025)
+ */
+function formatDateIndonesian(dateObj) {
+  if (!dateObj || !(dateObj instanceof Date) || isNaN(dateObj.getTime())) return '-';
+  const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const month = months[dateObj.getMonth()];
+  const year = dateObj.getFullYear();
+  return day + ' ' + month + ' ' + year;
+}
+
+/**
+ * Sinkronisasi sisa cuti tahunan hasil kalkulasi siklus ke Tabel_Karyawan di Google Sheets
+ */
+function syncEmployeeLeaveBalanceInSheet(nik, calculatedRemainingDays, empRowIndex) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetEmp = ss.getSheetByName(CONFIG.SHEET_KARYAWAN);
+    if (!sheetEmp) return;
+    let targetRow = empRowIndex;
+    if (!targetRow) {
+      const empData = getSheetDataAsObjects(CONFIG.SHEET_KARYAWAN) || [];
+      const idx = empData.findIndex(e => e && String(e.nik).trim() === String(nik).trim());
+      if (idx !== -1) targetRow = idx + 2;
+    }
+    if (targetRow) {
+      const currentVal = sheetEmp.getRange(targetRow, 18).getValue();
+      if (String(currentVal).trim() !== String(calculatedRemainingDays)) {
+        sheetEmp.getRange(targetRow, 18).setValue(String(calculatedRemainingDays));
+      }
+    }
+  } catch (e) {
+    // Non-blocking sync error
+  }
+}
+
+/**
+ * Kalkulator Siklus Cuti Tahunan:
+ * 1. Masa kerja < 1 tahun dari tgl_masuk: Belum berhak cuti tahunan (isEligible: false, kuota: 0).
+ * 2. Masa kerja >= 1 tahun: Berhak 12 hari per siklus tahunan (anniversary date).
+ * 3. Expired otomatis: Cuti tahun lalu otomatis hangus dan di-reset ke 12 hari pada siklus baru.
+ */
+function calculateEmployeeLeaveStatus(emp, asOfDate, allIzinList) {
+  const result = {
+    isEligible: false,
+    tglMasukRaw: '',
+    tglMasukFormatted: '-',
+    activeFromDate: '',
+    activeFromFormatted: '-',
+    cycleStart: '',
+    cycleStartFormatted: '-',
+    cycleEnd: '',
+    cycleEndFormatted: '-',
+    nextAnniversary: '',
+    nextAnnivFormatted: '-',
+    quotaDays: 12,
+    takenDays: 0,
+    remainingDays: 0,
+    message: ''
+  };
+
+  if (!emp) {
+    result.message = 'Data karyawan tidak ditemukan.';
+    return result;
+  }
+
+  const rawTglMasuk = emp.tgl_masuk || '';
+  result.tglMasukRaw = rawTglMasuk ? rawTglMasuk.toString().trim() : '';
+  const dMasuk = parseDateStrToDate(result.tglMasukRaw);
+
+  if (!dMasuk || isNaN(dMasuk.getTime())) {
+    result.isEligible = false;
+    result.message = 'Tanggal masuk kerja belum terdata di sistem HR.';
+    return result;
+  }
+
+  result.tglMasukFormatted = formatDateIndonesian(dMasuk);
+
+  const refDate = (asOfDate instanceof Date && !isNaN(asOfDate.getTime())) ? asOfDate : new Date();
+  const refYMD = normalizeDateToYMD(refDate);
+
+  // Tanggal genap 1 tahun masa kerja (Hak cuti pertama aktif)
+  const anniv1 = new Date(dMasuk.getFullYear() + 1, dMasuk.getMonth(), dMasuk.getDate());
+  const anniv1YMD = normalizeDateToYMD(anniv1);
+  result.activeFromDate = Utilities.formatDate(anniv1, 'Asia/Jakarta', 'yyyy-MM-dd');
+  result.activeFromFormatted = formatDateIndonesian(anniv1);
+
+  let baseQuota = parseInt(emp.kuota_cuti_tahunan || '12', 10);
+  if (isNaN(baseQuota) || baseQuota <= 0) baseQuota = 12;
+  result.quotaDays = baseQuota;
+
+  // Skenario A: Belum genap 1 tahun masa kerja (< 1 tahun)
+  if (refYMD < anniv1YMD) {
+    result.isEligible = false;
+    result.remainingDays = 0;
+    result.takenDays = 0;
+    result.message = 'Anda belum memiliki hak Cuti Tahunan. Hak cuti tahunan Anda (' + baseQuota + ' hari) akan aktif pada tanggal ' + result.activeFromFormatted + ' (setelah 1 tahun masa kerja).';
+    return result;
+  }
+
+  // Skenario B: Masa kerja sudah >= 1 tahun (Hak Cuti Tahunan Aktif)
+  result.isEligible = true;
+
+  // Hitung siklus tahunan berjalan (anniversary cycle)
+  const annivThisYear = new Date(refDate.getFullYear(), dMasuk.getMonth(), dMasuk.getDate());
+  const annivThisYearYMD = normalizeDateToYMD(annivThisYear);
+
+  let cycleStart, cycleEnd, nextAnniv;
+  if (refYMD >= annivThisYearYMD) {
+    cycleStart = annivThisYear;
+    cycleEnd = new Date(refDate.getFullYear() + 1, dMasuk.getMonth(), dMasuk.getDate() - 1);
+    nextAnniv = new Date(refDate.getFullYear() + 1, dMasuk.getMonth(), dMasuk.getDate());
+  } else {
+    cycleStart = new Date(refDate.getFullYear() - 1, dMasuk.getMonth(), dMasuk.getDate());
+    cycleEnd = new Date(refDate.getFullYear(), dMasuk.getMonth(), dMasuk.getDate() - 1);
+    nextAnniv = annivThisYear;
+  }
+
+  result.cycleStart = Utilities.formatDate(cycleStart, 'Asia/Jakarta', 'yyyy-MM-dd');
+  result.cycleStartFormatted = formatDateIndonesian(cycleStart);
+  result.cycleEnd = Utilities.formatDate(cycleEnd, 'Asia/Jakarta', 'yyyy-MM-dd');
+  result.cycleEndFormatted = formatDateIndonesian(cycleEnd);
+  result.nextAnniversary = Utilities.formatDate(nextAnniv, 'Asia/Jakarta', 'yyyy-MM-dd');
+  result.nextAnnivFormatted = formatDateIndonesian(nextAnniv);
+
+  const cycleStartYMD = normalizeDateToYMD(cycleStart);
+  const cycleEndYMD = normalizeDateToYMD(cycleEnd);
+
+  // Hitung cuti tahunan yang telah di-approve KHUSUS dalam periode siklus berjalan
+  const izinList = allIzinList || getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+  let takenDays = 0;
+  izinList.forEach(iz => {
+    if (!iz || String(iz.nik).trim() !== String(emp.nik).trim()) return;
+    if (iz.jenis !== 'Cuti Tahunan') return;
+    const status = (iz.status_persetujuan || '').toString();
+    if (status !== 'Approved' && status !== 'Approved_HOD') return;
+
+    const startYMD = normalizeDateToYMD(iz.tanggal_mulai);
+    if (startYMD && startYMD >= cycleStartYMD && startYMD <= cycleEndYMD) {
+      takenDays += parseInt(iz.jumlah_hari || '0', 10);
+    }
+  });
+
+  result.takenDays = takenDays;
+  result.remainingDays = Math.max(0, baseQuota - takenDays);
+  result.message = 'Hak cuti tahunan aktif: Sisa ' + result.remainingDays + ' hari (Berlaku s.d. ' + result.cycleEndFormatted + ').';
+  return result;
+}
+
 function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2818,11 +2976,22 @@ function submitIzinCuti(nik, tglMulai, tglSelesai, jumlahHari, jenis, alasan) {
 
     if (!emp) return { success: false, message: 'Data karyawan tidak ditemukan.' };
 
-    // Validasi kuota jika Cuti Tahunan (Cuti Khusus / Lainnya TIDAK memotong kuota)
+    // Validasi kuota dan masa kerja jika Cuti Tahunan (Cuti Khusus / Lainnya TIDAK memotong kuota)
     if (jenis === 'Cuti Tahunan') {
-      const sisaCuti = parseInt(emp.sisa_cuti_tahunan || '0', 10);
-      if (parseInt(jumlahHari, 10) > sisaCuti) {
-        return { success: false, message: 'Sisa kuota cuti tahunan Anda (' + sisaCuti + ' hari) tidak mencukupi.' };
+      const allIzin = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+      const leaveStatus = calculateEmployeeLeaveStatus(emp, new Date(), allIzin);
+      if (!leaveStatus.isEligible) {
+        return {
+          success: false,
+          message: 'Anda belum memiliki hak Cuti Tahunan. Hak cuti tahunan Anda (' + leaveStatus.quotaDays + ' hari) baru akan aktif pada tanggal ' + leaveStatus.activeFromFormatted + ' (setelah 1 tahun masa kerja).'
+        };
+      }
+      const reqDays = parseInt(jumlahHari, 10);
+      if (reqDays > leaveStatus.remainingDays) {
+        return {
+          success: false,
+          message: 'Sisa kuota cuti tahunan Anda periode ini (' + leaveStatus.remainingDays + ' hari, berlaku s.d. ' + leaveStatus.cycleEndFormatted + ') tidak mencukupi untuk pengajuan ' + reqDays + ' hari.'
+        };
       }
     }
 
@@ -2891,9 +3060,11 @@ function approveIzinCuti(idIzin, action, rejectionReason) {
         const empIdx = empData.findIndex(e => e && e.nik === item.nik);
         
         if (empIdx !== -1) {
-          const currentSisa = parseInt(empData[empIdx].sisa_cuti_tahunan || '0', 10);
-          const cutiDays = parseInt(item.jumlah_hari, 10);
-          sheetEmp.getRange(empIdx + 2, 18).setValue(Math.max(0, currentSisa - cutiDays).toString());
+          const empTarget = empData[empIdx];
+          const allIzin = getSheetDataAsObjects(CONFIG.SHEET_IZIN) || [];
+          const updatedIzin = allIzin.map(iz => (iz && iz.id_izin === idIzin) ? Object.assign({}, iz, { status_persetujuan: 'Approved' }) : iz);
+          const updatedLeaveStatus = calculateEmployeeLeaveStatus(empTarget, new Date(), updatedIzin);
+          sheetEmp.getRange(empIdx + 2, 18).setValue(updatedLeaveStatus.remainingDays.toString());
         }
       }
 

@@ -759,6 +759,8 @@
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-emerald-300/80">Kuota Cuti
                                     Tahunan</p>
                                 <p id="emp-sisa-cuti" class="text-xs font-bold text-white">Sisa Cuti: - Hari</p>
+                                <p id="emp-cuti-subtext" class="text-[9.5px] text-emerald-200/90 leading-tight hidden">
+                                </p>
                             </div>
                             <div
                                 class="w-9 h-9 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-300 border border-emerald-400/20">
@@ -1251,6 +1253,9 @@
                             <span>Buat Pengajuan Baru</span>
                         </button>
                     </div>
+
+                    <!-- Banner Kuota Cuti & Status Kelayakan Masa Kerja -->
+                    <div id="emp-cuti-quota-container"></div>
 
                     <div class="space-y-3">
                         <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Riwayat Pengajuan Saya
@@ -3308,6 +3313,9 @@
                             <option value="Lainnya">Lainnya (Cuti Khusus - Kode CK)</option>
                         </select>
                     </div>
+
+                    <!-- Alert Kelayakan Hak Cuti < 1 Tahun / Kuota Berjalan -->
+                    <div id="wrapper-cuti-tahunan-notice" class="hidden"></div>
 
                     <!-- Field Khusus: Izin Jam-Jaman -->
                     <div id="wrapper-izin-jam"
@@ -5520,8 +5528,91 @@
                 });
             }
 
+            /**
+             * Merender UI Kartu Kuota Cuti Tahunan & Banner Edukasi Hak Cuti
+             */
+            function renderEmployeeLeaveQuotaUI(leaveStatus) {
+                if (!leaveStatus) return;
+                const elCuti = document.getElementById('emp-sisa-cuti');
+                const elSub = document.getElementById('emp-cuti-subtext');
+                const bannerContainer = document.getElementById('emp-cuti-quota-container');
+
+                if (!leaveStatus.isEligible) {
+                    if (elCuti) {
+                        elCuti.innerHTML = '<span class="text-amber-300 font-extrabold text-xs">Belum Ada Hak Cuti</span>';
+                    }
+                    if (elSub) {
+                        elSub.classList.remove('hidden');
+                        elSub.innerHTML = 'Aktif: <b class="text-white">' + (leaveStatus.activeFromFormatted || '-') + '</b> (1 th kerja)';
+                    }
+                    if (bannerContainer) {
+                        bannerContainer.innerHTML =
+                            '<div class="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start gap-3.5 text-xs text-amber-900 shadow-xs">' +
+                            '<div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0 text-lg font-bold">' +
+                            '<i class="fa-solid fa-clock-rotate-left"></i>' +
+                            '</div>' +
+                            '<div class="space-y-1.5 flex-1">' +
+                            '<div class="flex items-center gap-2">' +
+                            '<h4 class="font-bold text-amber-950 text-xs">Informasi Hak Cuti Tahunan</h4>' +
+                            '<span class="text-[9.5px] px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 font-extrabold">Masa Kerja &lt; 1 Tahun</span>' +
+                            '</div>' +
+                            '<p class="text-[11.5px] leading-relaxed text-amber-800">' +
+                            'Anda <b>belum memiliki hak Cuti Tahunan</b> karena masa kerja Anda belum mencapai 1 tahun (Tanggal Masuk: <b>' + (leaveStatus.tglMasukFormatted || '-') + '</b>).' +
+                            '</p>' +
+                            '<p class="text-[11.5px] leading-relaxed text-amber-950 font-medium">' +
+                            '🎉 Hak cuti tahunan Anda (<b>' + (leaveStatus.quotaDays || 12) + ' hari kerja</b>) akan otomatis aktif pada tanggal: <span class="bg-amber-200/90 px-2 py-0.5 rounded-md font-bold text-amber-950">' + leaveStatus.activeFromFormatted + '</span>.' +
+                            '</p>' +
+                            '<p class="text-[10.5px] text-amber-700">' +
+                            '<i>Catatan: Anda tetap dapat mengajukan jenis izin lainnya seperti Sakit (S), Izin (I), Cuti Khusus (CK), Extra Off (EO), atau Public Holiday (PH).</i>' +
+                            '</p>' +
+                            '</div>' +
+                            '</div>';
+                    }
+                } else {
+                    if (elCuti) {
+                        elCuti.innerHTML = '<span class="text-white font-extrabold text-xs">Sisa Cuti: ' + leaveStatus.remainingDays + ' Hari</span>';
+                    }
+                    if (elSub) {
+                        elSub.classList.remove('hidden');
+                        elSub.innerHTML = 'Berlaku s.d. ' + (leaveStatus.cycleEndFormatted || '-') + ' (Reset tahunan)';
+                    }
+                    if (bannerContainer) {
+                        bannerContainer.innerHTML =
+                            '<div class="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/80 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-xs">' +
+                            '<div class="flex items-center gap-3">' +
+                            '<div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">' +
+                            '<i class="fa-solid fa-calendar-check text-lg"></i>' +
+                            '</div>' +
+                            '<div>' +
+                            '<div class="flex items-center gap-2">' +
+                            '<h4 class="font-bold text-slate-800 text-xs">Kuota Cuti Tahunan Periode Berjalan</h4>' +
+                            '<span class="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold">Aktif</span>' +
+                            '</div>' +
+                            '<p class="text-[11px] text-slate-500 mt-0.5">Siklus 1 Tahun: <b>' + (leaveStatus.cycleStartFormatted || '-') + '</b> s/d <b>' + (leaveStatus.cycleEndFormatted || '-') + '</b></p>' +
+                            '<p class="text-[10px] text-slate-400 mt-0.5">Sisa cuti yang tidak digunakan akan hangus dan diperbarui otomatis pada siklus berikutnya.</p>' +
+                            '</div>' +
+                            '</div>' +
+                            '<div class="flex items-center gap-3 self-end sm:self-center bg-white/80 border border-emerald-200 px-3.5 py-2 rounded-xl">' +
+                            '<div class="text-right">' +
+                            '<p class="text-[9.5px] uppercase font-bold text-slate-400">Sisa Kuota</p>' +
+                            '<p class="text-base font-extrabold text-emerald-700 leading-tight">' + leaveStatus.remainingDays + ' <span class="text-xs font-semibold text-slate-500">/ ' + leaveStatus.quotaDays + ' Hari</span></p>' +
+                            '</div>' +
+                            '</div>' +
+                            '</div>';
+                    }
+                }
+            }
+
             function applyKaryawanDashboardData(res, isOfflineCached = false, isSilent = false) {
                 if (!res) return;
+
+                if (res.leaveStatus) {
+                    if (currentUser) {
+                        currentUser.leave_status = res.leaveStatus;
+                        currentUser.sisa_cuti_tahunan = res.leaveStatus.remainingDays;
+                    }
+                    renderEmployeeLeaveQuotaUI(res.leaveStatus);
+                }
 
                 renderBirthdayBanner(res.todayBirthdays || [], 'emp-birthday-alert-container');
                 checkAndUpdateMadingBadge(res.announcements || []);
@@ -5860,11 +5951,17 @@
                     const elNik = document.getElementById('emp-nik-badge');
                     const elDept = document.getElementById('emp-dept-role');
                     const elCuti = document.getElementById('emp-sisa-cuti');
+                    const elCutiSub = document.getElementById('emp-cuti-subtext');
                     const elAvatar = document.getElementById('emp-avatar');
                     if (elNama) elNama.innerText = currentUser.nama || '-';
                     if (elNik) elNik.innerText = currentUser.nik || '-';
                     if (elDept) elDept.innerText = (currentUser.departemen || '-') + ' • ' + (currentUser.jabatan || '-');
-                    if (elCuti) elCuti.innerText = 'Sisa Cuti: ' + (currentUser.sisa_cuti_tahunan || 0) + ' Hari';
+                    if (currentUser.leave_status) {
+                        renderEmployeeLeaveQuotaUI(currentUser.leave_status);
+                    } else {
+                        if (elCuti) elCuti.innerText = 'Sisa Cuti: ' + (currentUser.sisa_cuti_tahunan || 0) + ' Hari';
+                        if (elCutiSub) elCutiSub.classList.add('hidden');
+                    }
                     if (elAvatar) elAvatar.src = currentUser.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
                 }
 
@@ -8122,11 +8219,65 @@
                 const jenis = document.getElementById('izin-jenis').value;
                 const wrapJam = document.getElementById('wrapper-izin-jam');
                 const wrapKhusus = document.getElementById('wrapper-cuti-khusus');
+                const wrapNotice = document.getElementById('wrapper-cuti-tahunan-notice');
                 const wrapTglSelesai = document.getElementById('wrapper-tgl-selesai');
                 const wrapJumlah = document.getElementById('wrapper-jumlah-hari');
                 const inputTglMulai = document.getElementById('izin-tgl-mulai');
                 const inputTglSelesai = document.getElementById('izin-tgl-selesai');
                 const inputJumlah = document.getElementById('izin-jumlah');
+                const btnSubmit = document.getElementById('btn-submit-izin');
+                const leaveStatus = (currentUser && currentUser.leave_status) ? currentUser.leave_status : null;
+
+                // Proteksi Hak Cuti < 1 Tahun Kerja / Informasi Kuota
+                if (wrapNotice) {
+                    if (jenis === 'Cuti Tahunan') {
+                        if (leaveStatus && !leaveStatus.isEligible) {
+                            wrapNotice.classList.remove('hidden');
+                            wrapNotice.innerHTML =
+                                '<div class="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2.5 text-xs text-amber-900 shadow-xs">' +
+                                '<i class="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5 text-sm shrink-0"></i>' +
+                                '<div class="space-y-1">' +
+                                '<p class="font-bold text-amber-950">Anda Belum Memiliki Hak Cuti Tahunan</p>' +
+                                '<p class="text-[11px] leading-relaxed text-amber-800">Masa kerja Anda belum mencapai 1 tahun (Masuk: <b>' + (leaveStatus.tglMasukFormatted || '-') + '</b>). Hak cuti tahunan (12 hari) akan otomatis aktif pada: <b class="text-amber-950 bg-amber-200/80 px-1.5 py-0.5 rounded">' + leaveStatus.activeFromFormatted + '</b>.</p>' +
+                                '<p class="text-[10px] text-amber-700 italic">Untuk saat ini, silakan pilih jenis pengajuan lain seperti Sakit, Izin, atau Cuti Khusus.</p>' +
+                                '</div>' +
+                                '</div>';
+                            if (btnSubmit) {
+                                btnSubmit.disabled = true;
+                                btnSubmit.classList.add('opacity-50', 'cursor-not-allowed');
+                                btnSubmit.innerHTML = '<span>Hak Cuti Belum Aktif</span>';
+                            }
+                        } else if (leaveStatus && leaveStatus.isEligible) {
+                            wrapNotice.classList.remove('hidden');
+                            wrapNotice.innerHTML =
+                                '<div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900">' +
+                                '<div class="flex items-center gap-2">' +
+                                '<i class="fa-solid fa-circle-check text-emerald-600"></i>' +
+                                '<span class="text-[11px]">Sisa Kuota Cuti Periode Ini: <b class="text-emerald-950 font-extrabold">' + leaveStatus.remainingDays + ' Hari</b> (s.d. ' + leaveStatus.cycleEndFormatted + ')</span>' +
+                                '</div>' +
+                                '</div>';
+                            if (btnSubmit) {
+                                btnSubmit.disabled = false;
+                                btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+                                btnSubmit.innerHTML = '<span>Kirim Pengajuan</span>';
+                            }
+                        } else {
+                            wrapNotice.classList.add('hidden');
+                            if (btnSubmit) {
+                                btnSubmit.disabled = false;
+                                btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+                                btnSubmit.innerHTML = '<span>Kirim Pengajuan</span>';
+                            }
+                        }
+                    } else {
+                        wrapNotice.classList.add('hidden');
+                        if (btnSubmit) {
+                            btnSubmit.disabled = false;
+                            btnSubmit.classList.remove('opacity-50', 'cursor-not-allowed');
+                            btnSubmit.innerHTML = '<span>Kirim Pengajuan</span>';
+                        }
+                    }
+                }
 
                 if (wrapJam) {
                     if (jenis === 'Izin Jam') {
@@ -8181,6 +8332,14 @@
                 if (!alasan) {
                     showToast('Keterangan / alasan harus diisi.', 'warning');
                     return;
+                }
+
+                if (jenis === 'Cuti Tahunan') {
+                    const lStatus = (currentUser && currentUser.leave_status) ? currentUser.leave_status : null;
+                    if (lStatus && !lStatus.isEligible) {
+                        showToast('Anda belum memiliki hak Cuti Tahunan. Hak cuti aktif pada ' + (lStatus.activeFromFormatted || '-'), 'warning');
+                        return;
+                    }
                 }
 
                 let finalJenis = jenis;
