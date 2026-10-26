@@ -109,9 +109,43 @@
         }
 
         /* Failsafe Anti-Leak Modal & Native Defensive Rules (Zero-CSS Crash Protection) */
-        .hidden,
-        [hidden] {
+        [hidden],
+        div[id^="modal-"].hidden,
+        .modal-overlay.hidden {
             display: none !important;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Desktop & Mobile Responsive Display Overrides (Preserves Tailwind lg:flex on Laptop/Desktop) */
+        @media (min-width: 1024px) {
+            .lg\:flex {
+                display: flex !important;
+            }
+
+            .lg\:block {
+                display: block !important;
+            }
+
+            .lg\:grid {
+                display: grid !important;
+            }
+
+            .lg\:hidden {
+                display: none !important;
+            }
+        }
+
+        @media (min-width: 640px) {
+            .sm\:block {
+                display: block !important;
+            }
+
+            .sm\:flex {
+                display: flex !important;
+            }
         }
 
         /* Mobile Scaling Compact (~80% Zoom Feel on Mobile) */
