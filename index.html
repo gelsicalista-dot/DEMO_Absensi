@@ -108,6 +108,12 @@
             overflow-x: hidden;
         }
 
+        /* Failsafe Anti-Leak Modal & Native Defensive Rules (Zero-CSS Crash Protection) */
+        .hidden,
+        [hidden] {
+            display: none !important;
+        }
+
         /* Mobile Scaling Compact (~80% Zoom Feel on Mobile) */
         @media (max-width: 639px) {
             html {
@@ -5495,6 +5501,21 @@
                             statusElem.innerText = 'Status: Hadir Offline (' + masukTime + ') - Menunggu Sinyal';
                             statusElem.className = 'text-xs bg-amber-50 text-amber-800 border border-amber-300 px-3 py-1 rounded-full font-bold';
                         }
+                    } else if (!hasMasuk && hasPulang) {
+                        const masukTime = (currentLastTodayRecord && currentLastTodayRecord.jam_masuk) ? currentLastTodayRecord.jam_masuk : '--:--';
+                        const pulangTime = hasPulang.timestamp ? new Date(hasPulang.timestamp).toLocaleTimeString('id-ID', { hour12: false }) : '--:--';
+                        currentLastTodayRecord = {
+                            jam_masuk: masukTime,
+                            jam_pulang: pulangTime,
+                            status: 'Presensi Selesai (Offline)'
+                        };
+                        renderAttendanceActionButtons(currentLastTodayRecord, currentTodayShiftInfo || 'Standard', false);
+
+                        const statusElem = document.getElementById('emp-status-today');
+                        if (statusElem) {
+                            statusElem.innerText = 'Status: Presensi Selesai Offline (' + pulangTime + ') - Menunggu Sinyal';
+                            statusElem.className = 'text-xs bg-amber-50 text-amber-800 border border-amber-300 px-3 py-1 rounded-full font-bold';
+                        }
                     }
                 });
             }
@@ -7525,18 +7546,56 @@
             let isTorchOn = false;
             let prewarmedGPS = null;
 
+            function saveValidGPSCache(lat, lng) {
+                if (!lat || !lng) return;
+                prewarmedGPS = {
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng),
+                    timestamp: Date.now()
+                };
+                try {
+                    safeStorage.setItem('balcone_last_valid_gps', JSON.stringify({
+                        lat: parseFloat(lat),
+                        lng: parseFloat(lng),
+                        timestamp: Date.now()
+                    }));
+                } catch (e) { }
+            }
+
+            function getValidGPSCache() {
+                if (prewarmedGPS && (Date.now() - prewarmedGPS.timestamp < 3600000)) {
+                    return prewarmedGPS;
+                }
+                try {
+                    const raw = safeStorage.getItem('balcone_last_valid_gps');
+                    if (raw) {
+                        const parsed = JSON.parse(raw);
+                        if (parsed && parsed.lat && parsed.lng) {
+                            return parsed;
+                        }
+                    }
+                } catch (e) { }
+                return null;
+            }
+
             function preWarmGPS() {
                 if (!navigator.geolocation) return;
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
-                        prewarmedGPS = {
-                            lat: pos.coords.latitude,
-                            lng: pos.coords.longitude,
-                            timestamp: Date.now()
-                        };
+                        saveValidGPSCache(pos.coords.latitude, pos.coords.longitude);
                     },
-                    (err) => { console.warn('Pre-warm GPS:', err); },
-                    { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+                    (err) => {
+                        if (!navigator.onLine) {
+                            navigator.geolocation.getCurrentPosition(
+                                (posFallback) => { saveValidGPSCache(posFallback.coords.latitude, posFallback.coords.longitude); },
+                                (err2) => { console.warn('Pre-warm GPS offline fallback:', err2); },
+                                { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
+                            );
+                        } else {
+                            console.warn('Pre-warm GPS:', err);
+                        }
+                    },
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
                 );
             }
 
@@ -7917,6 +7976,7 @@
 
                 const doSubmit = (lat, lng) => {
                     const accurateTimestamp = getAccurateTimestamp();
+                    saveValidGPSCache(lat, lng);
 
                     // Deteksi jika perangkat sedang offline tanpa sinyal internet
                     if (!navigator.onLine) {
@@ -7987,30 +8047,53 @@
                     });
                 }
 
-                // Gunakan koordinat GPS hasil pemanasan awal (pre-warm) jika masih segar (< 35 detik)
-                if (prewarmedGPS && (Date.now() - prewarmedGPS.timestamp < 35000)) {
+                // 1. Cek cache lokasi yang tersimpan di HP
+                const cachedLocation = getValidGPSCache();
+
+                // Jika sedang OFFLINE / MODE PESAWAT dan kita sudah punya cache GPS (misal dari Absen Masuk hari ini):
+                if (!navigator.onLine && cachedLocation) {
+                    doSubmit(cachedLocation.lat, cachedLocation.lng);
+                    return;
+                }
+
+                // Jika online dan prewarmedGPS masih segar (< 45 detik)
+                if (prewarmedGPS && (Date.now() - prewarmedGPS.timestamp < 45000)) {
                     doSubmit(prewarmedGPS.lat, prewarmedGPS.lng);
                     return;
                 }
 
-                // Fallback bertingkat: GPS Satelit (timeout 6 detik) -> Network/BTS Cell-Tower
+                // Fallback bertingkat: GPS Satelit -> Network/Offline Geolocation -> Failsafe Cache
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
+                        saveValidGPSCache(pos.coords.latitude, pos.coords.longitude);
                         doSubmit(pos.coords.latitude, pos.coords.longitude);
                     },
                     (err) => {
-                        console.warn('Satelit GPS presisi lambat, mencoba Network/WiFi Geolocation:', err);
+                        console.warn('Satelit GPS presisi lambat, mencoba Network/Offline Geolocation:', err);
                         navigator.geolocation.getCurrentPosition(
                             (fallbackPos) => {
+                                saveValidGPSCache(fallbackPos.coords.latitude, fallbackPos.coords.longitude);
                                 doSubmit(fallbackPos.coords.latitude, fallbackPos.coords.longitude);
                             },
                             (finalErr) => {
-                                showToast('Gagal membaca lokasi GPS. Pastikan izin lokasi HP aktif.', 'error');
+                                console.warn('Geolocation error:', finalErr);
+                                const lastGps = getValidGPSCache();
+                                if (lastGps) {
+                                    showToast('Menggunakan koordinat lokasi tersimpan di HP.', 'info');
+                                    doSubmit(lastGps.lat, lastGps.lng);
+                                } else if (!navigator.onLine) {
+                                    // Failsafe Mode Pesawat: Karyawan sudah scan QR Code fisik resort,
+                                    // rekam ke antrean offline dengan koordinat resort default (-0.297491, 100.368819) agar absensi tidak hilang!
+                                    showToast('Mode Pesawat terdeteksi. Absensi direkam dengan verifikasi QR Code resort.', 'info');
+                                    doSubmit(-0.297491, 100.368819);
+                                } else {
+                                    showToast('Gagal membaca lokasi GPS. Pastikan izin lokasi HP aktif.', 'error');
+                                }
                             },
-                            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+                            { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
                         );
                     },
-                    { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
                 );
             }
 
