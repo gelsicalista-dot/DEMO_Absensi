@@ -5530,6 +5530,10 @@
                 currentLastTodayRecord = res.todayRecord || null;
                 currentIsOffToday = !!res.isOffToday;
 
+                if (res.todayRecord && (res.todayRecord.lat_masuk || res.todayRecord.lat)) {
+                    saveValidGPSCache(res.todayRecord.lat_masuk || res.todayRecord.lat, res.todayRecord.long_masuk || res.todayRecord.lng);
+                }
+
                 const shiftElem = document.getElementById('emp-roster-shift');
                 if (shiftElem) {
                     shiftElem.innerText = 'Jadwal Shift: ' + (res.todayShiftInfo || 'Standard');
@@ -7575,6 +7579,23 @@
                         }
                     }
                 } catch (e) { }
+
+                // Auto-harvest dari Absen Masuk hari ini jika ada
+                if (currentLastTodayRecord) {
+                    const rawLat = currentLastTodayRecord.lat_masuk || currentLastTodayRecord.lat;
+                    const rawLng = currentLastTodayRecord.long_masuk || currentLastTodayRecord.lng;
+                    if (rawLat && rawLng) {
+                        const parsedLat = parseFloat(String(rawLat).replace("'", ""));
+                        const parsedLng = parseFloat(String(rawLng).replace("'", ""));
+                        if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+                            return {
+                                lat: parsedLat,
+                                lng: parsedLng,
+                                timestamp: Date.now()
+                            };
+                        }
+                    }
+                }
                 return null;
             }
 
@@ -9035,9 +9056,14 @@
                 triggerOfflineSync(true);
             });
 
+            let onlineSyncTimer = null;
             window.addEventListener('online', function () {
                 updateNetworkStatusUI();
-                triggerOfflineSync(true);
+                if (onlineSyncTimer) clearTimeout(onlineSyncTimer);
+                // Jeda 2.5 detik agar sinyal seluler 4G/WiFi HP stabil sebelum melakukan transmisi data
+                onlineSyncTimer = setTimeout(function () {
+                    triggerOfflineSync(false);
+                }, 2500);
             });
 
             window.addEventListener('offline', function () {

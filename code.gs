@@ -1055,14 +1055,6 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlin
       return { success: false, message: 'QR Code Kantor tidak valid!' };
     }
 
-    const distance = haversineDistance(parseFloat(userLat), parseFloat(userLong), kantorLat, kantorLong);
-    if (distance > maxRadius) {
-      return { 
-        success: false, 
-        message: 'Posisi Anda di luar radius aman area The Balcone! Jarak Anda: ' + distance + 'm (Maks: ' + maxRadius + 'm)' 
-      };
-    }
-
     const todayDate = offlineTimestamp ? new Date(Number(offlineTimestamp)) : new Date();
     const todayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'dd/MM/yyyy');
     const isoTodayStr = Utilities.formatDate(todayDate, 'Asia/Jakarta', 'yyyy-MM-dd');
@@ -1074,6 +1066,32 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlin
 
     const todayYMD = normalizeDateToYMD(todayDate);
     const yesterdayYMD = normalizeDateToYMD(yesterdayDate);
+
+    const distance = haversineDistance(parseFloat(userLat), parseFloat(userLong), kantorLat, kantorLong);
+    let isRadiusExceeded = (distance > maxRadius);
+
+    if (isRadiusExceeded) {
+      // Pengecualian Aman untuk Sesi PULANG / Sinkronisasi Offline:
+      // Jika karyawan sudah terbukti memiliki Absen Masuk yang sah hari ini di resort dan berhasil memindai QR fisik resmi kantor:
+      if (actionType === 'PULANG') {
+        const absensiCheck = getSheetDataAsObjects(CONFIG.SHEET_ABSENSI) || [];
+        const hasValidMasuk = absensiCheck.some(a => 
+          a && String(a.nik).trim() === String(nik).trim() && 
+          (normalizeDateToYMD(a.tanggal) === todayYMD || normalizeDateToYMD(a.tanggal) === yesterdayYMD) &&
+          a.jam_masuk && a.jam_masuk !== ''
+        );
+        if (hasValidMasuk) {
+          isRadiusExceeded = false; // Lolos verifikasi sesi pulang!
+        }
+      }
+    }
+
+    if (isRadiusExceeded) {
+      return { 
+        success: false, 
+        message: 'Posisi Anda di luar radius aman area The Balcone! Jarak Anda: ' + distance + 'm (Maks: ' + maxRadius + 'm)' 
+      };
+    }
 
     const rosterList = getSheetDataAsObjects(CONFIG.SHEET_ROSTER) || [];
     const userRosterToday = rosterList.find(r => 
