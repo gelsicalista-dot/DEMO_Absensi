@@ -1136,7 +1136,7 @@
                             The Balcone Suites & Resort dan kamera aktif saat memindai kode QR resmi.</p>
                     </div>
 
-                    <!-- Indikator Live Sinyal & Status Keamanan Perangkat -->
+                    <!-- Indikator Live Sinyal, Status Keamanan Perangkat & Sakelar Suara -->
                     <div class="flex flex-wrap items-center justify-center gap-2 pt-1 pb-1">
                         <div id="emp-network-status-badge"
                             class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs">
@@ -1148,6 +1148,12 @@
                             <i class="fa-solid fa-shield-halved text-indigo-600"></i>
                             <span>Proteksi HP Terdaftar</span>
                         </div>
+                        <button id="emp-audio-toggle-btn" onclick="AttendanceAudioEngine.toggleMute()" type="button"
+                            title="Klik untuk mengaktifkan / membisukan suara konfirmasi presensi"
+                            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs cursor-pointer transition-all active:scale-95">
+                            <i id="emp-audio-toggle-icon" class="fa-solid fa-volume-high text-emerald-600"></i>
+                            <span id="emp-audio-toggle-text">Suara: Aktif</span>
+                        </button>
                     </div>
 
                     <div id="attendance-action-container" class="pt-2">
@@ -4028,6 +4034,164 @@
             }
 
             /* ==========================================================================
+               ATTENDANCE AUDIO CONFIRMATION ENGINE (CHIME + TEXT-TO-SPEECH ID)
+               ========================================================================== */
+            const AttendanceAudioEngine = {
+                isMuted: function () {
+                    return safeStorage.getItem('balcone_audio_muted') === 'true';
+                },
+                toggleMute: function () {
+                    const current = this.isMuted();
+                    const next = !current;
+                    safeStorage.setItem('balcone_audio_muted', next ? 'true' : 'false');
+                    this.updateUI();
+                    if (!next) {
+                        this.playChime();
+                        showToast('Suara konfirmasi presensi diaktifkan (🔊)', 'info');
+                    } else {
+                        showToast('Suara konfirmasi presensi dibisukan (🔇)', 'info');
+                    }
+                },
+                updateUI: function () {
+                    const btn = document.getElementById('emp-audio-toggle-btn');
+                    const icon = document.getElementById('emp-audio-toggle-icon');
+                    const text = document.getElementById('emp-audio-toggle-text');
+                    if (!btn || !icon || !text) return;
+                    const muted = this.isMuted();
+                    if (muted) {
+                        icon.className = 'fa-solid fa-volume-xmark text-rose-500';
+                        text.innerText = 'Suara: Bisu';
+                        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 shadow-xs cursor-pointer transition-all active:scale-95';
+                    } else {
+                        icon.className = 'fa-solid fa-volume-high text-emerald-600';
+                        text.innerText = 'Suara: Aktif';
+                        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-xs cursor-pointer transition-all active:scale-95';
+                    }
+                },
+                playChime: function () {
+                    if (this.isMuted()) return;
+                    try {
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        if (!AudioContextClass) return;
+                        const ctx = new AudioContextClass();
+                        if (ctx.state === 'suspended') {
+                            ctx.resume();
+                        }
+
+                        // Harmonic 3-tone chime: C5 (523.25Hz) -> E5 (659.25Hz) -> G5 (783.99Hz)
+                        const notes = [
+                            { freq: 523.25, time: 0.00, dur: 0.14 },
+                            { freq: 659.25, time: 0.10, dur: 0.16 },
+                            { freq: 783.99, time: 0.22, dur: 0.35 }
+                        ];
+
+                        notes.forEach(function (n) {
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(n.freq, ctx.currentTime + n.time);
+
+                            gain.gain.setValueAtTime(0.001, ctx.currentTime + n.time);
+                            gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + n.time + 0.03);
+                            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n.time + n.dur);
+
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+
+                            osc.start(ctx.currentTime + n.time);
+                            osc.stop(ctx.currentTime + n.time + n.dur + 0.05);
+                        });
+
+                        setTimeout(function () {
+                            try { ctx.close(); } catch (e) { }
+                        }, 1200);
+                    } catch (e) {
+                        console.warn('Web Audio Chime notice:', e);
+                    }
+                },
+                speak: function (text) {
+                    if (this.isMuted()) return;
+                    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+                    try {
+                        window.speechSynthesis.cancel();
+                        const utter = new SpeechSynthesisUtterance(text);
+                        utter.lang = 'id-ID';
+                        utter.rate = 1.0;
+                        utter.pitch = 1.05;
+                        utter.volume = 1.0;
+
+                        const voices = window.speechSynthesis.getVoices();
+                        if (voices && voices.length > 0) {
+                            const idVoice = voices.find(function (v) {
+                                return v.lang && (v.lang.toLowerCase() === 'id-id' || v.lang.toLowerCase().startsWith('id'));
+                            });
+                            if (idVoice) utter.voice = idVoice;
+                        }
+                        window.speechSynthesis.speak(utter);
+                    } catch (e) {
+                        console.warn('SpeechSynthesis notice:', e);
+                    }
+                },
+                notifySuccess: function (actionType, status, staffName) {
+                    this.playChime();
+                    const self = this;
+                    setTimeout(function () {
+                        let msg = '';
+                        const isLate = (status || '').includes('Terlambat');
+                        const isPC = (status || '').includes('Pulang Cepat');
+
+                        if (actionType === 'MASUK') {
+                            if (isLate) {
+                                msg = 'Presensi masuk berhasil dicatat. Status: Terlambat.';
+                            } else {
+                                msg = 'Presensi masuk berhasil dicatat. Selamat bekerja!';
+                            }
+                        } else if (actionType === 'PULANG') {
+                            if (isPC) {
+                                msg = 'Presensi pulang berhasil dicatat. Status: Pulang cepat. Terima kasih!';
+                            } else {
+                                msg = 'Presensi pulang berhasil dicatat. Terima kasih, hati-hati di jalan!';
+                            }
+                        } else {
+                            msg = 'Presensi berhasil dicatat. Terima kasih!';
+                        }
+                        self.speak(msg);
+                    }, 300);
+                }
+            };
+
+            /* ==========================================================================
+               DAILY SHIFT QUICK-CACHE (INSTAN 0 DETIK SAAT BUKA APLIKASI)
+               ========================================================================== */
+            function saveDailyShiftQuickCache(nik, dateStr, shiftInfo, isOffToday) {
+                if (!nik || !dateStr) return;
+                try {
+                    const payload = {
+                        date: dateStr,
+                        shiftInfo: shiftInfo || 'OFF (Libur)',
+                        isOffToday: !!isOffToday,
+                        savedAt: Date.now()
+                    };
+                    safeStorage.setItem('balcone_today_shift_' + nik, JSON.stringify(payload));
+                } catch (e) {
+                    console.warn('Gagal menyimpan quick-cache shift:', e);
+                }
+            }
+
+            function getDailyShiftQuickCache(nik, dateStr) {
+                if (!nik) return null;
+                try {
+                    const raw = safeStorage.getItem('balcone_today_shift_' + nik);
+                    if (!raw) return null;
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.date === dateStr) {
+                        return parsed;
+                    }
+                } catch (e) { }
+                return null;
+            }
+
+            /* ==========================================================================
                PWA SERVICE WORKER & DEVICE FINGERPRINT ENGINE
                ========================================================================== */
             try {
@@ -4827,6 +4991,11 @@
             function switchEmpTab(tabName) {
                 if (tabName === 'mading') {
                     markMadingAsRead();
+                }
+                if (tabName === 'presensi') {
+                    if (typeof AttendanceAudioEngine !== 'undefined') {
+                        AttendanceAudioEngine.updateUI();
+                    }
                 }
                 const tabs = ['home', 'presensi', 'roster', 'cuti', 'mading', 'riwayat'];
                 tabs.forEach(t => {
@@ -5663,6 +5832,8 @@
                 if (shiftElem) {
                     shiftElem.innerText = 'Jadwal Shift: ' + (res.todayShiftInfo || (res.isOffToday ? 'OFF (Libur)' : 'OFF (Libur)'));
                 }
+                const todayIsoStr = new Date().toISOString().split('T')[0];
+                saveDailyShiftQuickCache(currentUser ? currentUser.nik : '', todayIsoStr, res.todayShiftInfo || (res.isOffToday ? 'OFF (Libur)' : 'OFF (Libur)'), res.isOffToday);
 
                 const statusElem = document.getElementById('emp-status-today');
                 if (statusElem) {
@@ -6028,6 +6199,18 @@
                 const cacheKey = 'balcone_dash_cache_' + userNik + '_' + reqMonth;
                 const generalCacheKey = 'balcone_dash_cache_' + userNik;
                 let hasLoadedFromCache = false;
+
+                // Quick-render instan 0 detik dari Daily Shift Quick-Cache
+                const todayIsoStr = new Date().toISOString().split('T')[0];
+                const quickShift = getDailyShiftQuickCache(userNik, todayIsoStr);
+                if (quickShift) {
+                    const shiftElem = document.getElementById('emp-roster-shift');
+                    if (shiftElem) {
+                        shiftElem.innerText = 'Jadwal Shift: ' + (quickShift.shiftInfo || 'OFF (Libur)');
+                    }
+                    currentTodayShiftInfo = quickShift.shiftInfo;
+                    currentIsOffToday = quickShift.isOffToday;
+                }
 
                 try {
                     const raw = safeStorage.getItem(cacheKey) || safeStorage.getItem(generalCacheKey);
@@ -8130,6 +8313,13 @@
                     const accurateTimestamp = getAccurateTimestamp();
                     saveValidGPSCache(lat, lng);
 
+                    // Optimistic UI Transisi: Berikan indikator visual instan bahwa data sedang diproses
+                    const statusElem = document.getElementById('emp-status-today');
+                    if (statusElem) {
+                        statusElem.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Menyimpan Presensi...';
+                        statusElem.className = 'text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full font-bold inline-block animate-pulse';
+                    }
+
                     // Deteksi jika perangkat sedang offline tanpa sinyal internet
                     if (!navigator.onLine) {
                         saveOfflineRecord(lat, lng, qrCodeSecret, accurateTimestamp);
@@ -8140,7 +8330,7 @@
                         if (res.success) {
                             showToast(res.message, 'success');
 
-                            // Optimistic UI lock: seketika kunci tombol masuk agar tidak bisa dipencet ganda
+                            // Optimistic UI lock: seketika kunci tombol masuk/pulang agar tidak bisa dipencet ganda
                             if (currentAttendanceAction === 'MASUK') {
                                 const nowStr = res.jam_masuk || new Date().toLocaleTimeString('id-ID', { hour12: false });
                                 currentLastTodayRecord = {
@@ -8155,6 +8345,7 @@
                                     statusElem.innerText = 'Status: Hadir (' + nowStr + ') - ' + (res.status || 'Tepat Waktu');
                                     statusElem.className = 'text-xs ' + (isLate ? 'bg-rose-100 text-rose-800 border border-rose-300 font-bold' : 'bg-emerald-50 text-emerald-700 font-bold') + ' px-3 py-1 rounded-full';
                                 }
+                                AttendanceAudioEngine.notifySuccess('MASUK', res.status || 'Tepat Waktu', currentUser ? currentUser.nama : '');
                             } else if (currentAttendanceAction === 'PULANG') {
                                 const nowStr = res.jam_pulang || new Date().toLocaleTimeString('id-ID', { hour12: false });
                                 currentLastTodayRecord = {
@@ -8163,11 +8354,44 @@
                                     status: res.status || 'Tepat Waktu'
                                 };
                                 renderAttendanceActionButtons(currentLastTodayRecord, currentTodayShiftInfo || 'Standard', false);
+                                // PERBAIKAN MUTLAK: Render status langsung saat itu juga untuk sesi PULANG
+                                const statusElem = document.getElementById('emp-status-today');
+                                if (statusElem) {
+                                    const isPC = (res.status || '').includes('Pulang Cepat');
+                                    const isLate = (res.status || '').includes('Terlambat');
+                                    const badgeColor = (isPC || isLate) ? 'bg-rose-100 text-rose-800 border border-rose-300 font-bold' : 'bg-gray-100 text-gray-700 font-bold';
+                                    statusElem.innerText = 'Status: Sudah Pulang (' + nowStr + ') - ' + (res.status || 'Tepat Waktu');
+                                    statusElem.className = 'text-xs ' + badgeColor + ' px-3 py-1 rounded-full font-medium';
+                                }
+                                AttendanceAudioEngine.notifySuccess('PULANG', res.status || 'Tepat Waktu', currentUser ? currentUser.nama : '');
+                            }
+
+                            // In-Place Cache Mutation: Update cache lokal seketika (Solusi mutlak HP tipe lama agar bebas refresh manual)
+                            try {
+                                const userNik = currentUser ? currentUser.nik : '';
+                                const reqMonth = currentEmpRosterMonthStr || getActiveCutoffMonthStr();
+                                const cacheKey = 'balcone_dash_cache_' + userNik + '_' + reqMonth;
+                                const generalCacheKey = 'balcone_dash_cache_' + userNik;
+                                const raw = safeStorage.getItem(cacheKey) || safeStorage.getItem(generalCacheKey);
+                                if (raw) {
+                                    const cachedObj = JSON.parse(raw);
+                                    if (cachedObj && cachedObj.success) {
+                                        cachedObj.todayRecord = currentLastTodayRecord;
+                                        safeStorage.setItem(cacheKey, JSON.stringify(cachedObj));
+                                        safeStorage.setItem(generalCacheKey, JSON.stringify(cachedObj));
+                                    }
+                                }
+                            } catch (cacheErr) {
+                                console.warn('Gagal mutasi cache lokal in-place:', cacheErr);
                             }
 
                             loadKaryawanDashboard(true);
                         } else {
                             showToast(res.message, 'error');
+                            // Kembalikan tampilan status jika gagal
+                            if (currentLastTodayRecord) {
+                                renderAttendanceActionButtons(currentLastTodayRecord, currentTodayShiftInfo || 'Standard', currentIsOffToday);
+                            }
                         }
                     }, function (netErr) {
                         console.warn('Network submit failed, saving to offline queue:', netErr);
@@ -8190,6 +8414,7 @@
                     OfflineAttendanceEngine.saveRecord(rec, function (ok) {
                         if (ok) {
                             showToast('Absensi ' + currentAttendanceAction + ' Berhasil Direkam (Offline)! Akan disinkronkan saat sinyal pulih.', 'success');
+                            AttendanceAudioEngine.notifySuccess(currentAttendanceAction, 'Offline', currentUser ? currentUser.nama : '');
                             updateOfflineAttendanceUI();
                             syncAttendanceButtonsWithOfflineQueue();
                             loadKaryawanDashboard(true);
@@ -9247,6 +9472,9 @@
                 updateOfflineAttendanceUI();
                 updateNetworkStatusUI();
                 triggerOfflineSync(true);
+                if (typeof AttendanceAudioEngine !== 'undefined') {
+                    AttendanceAudioEngine.updateUI();
+                }
             });
 
             let onlineSyncTimer = null;
