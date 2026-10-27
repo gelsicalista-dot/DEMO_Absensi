@@ -4,7 +4,7 @@
  * Strategy: Network-First with Cache Fallback (Zero-Reinstall Instant Update)
  */
 
-const CACHE_NAME = 'balcone-pwa-v28';
+const CACHE_NAME = 'balcone-pwa-v29';
 const STATIC_ASSETS = [
   './',
   './index.html',

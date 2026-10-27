@@ -1126,6 +1126,12 @@ function processAbsensi(nik, userLat, userLong, qrSecretCode, actionType, offlin
         } else {
           activeShift = shifts.find(s => s && String(s.id_shift).trim().toUpperCase() === shiftVal);
         }
+      } else {
+        // Konsisten dengan Roster & Riwayat: Jika belum ada jadwal roster yang diplot HOD, tolak presensi masuk
+        return { 
+          success: false, 
+          message: 'Hari ini jadwal shift Anda belum dibuat oleh HOD di Roster (Status: OFF). Presensi Masuk ditolak.' 
+        };
       }
 
       if (isOffDay) {
@@ -1863,7 +1869,7 @@ function getKaryawanDashboard(nik, monthYear) {
     );
     
     let isOffToday = false;
-    let shiftInfo = 'Standard (08:00 - 17:00)';
+    let shiftInfo = 'OFF (Libur)';
     if (userRoster) {
       const rawShift = (userRoster.id_shift || userRoster.status_hari || '').toString().trim();
       const shiftVal = rawShift.toUpperCase();
@@ -1889,11 +1895,10 @@ function getKaryawanDashboard(nik, monthYear) {
         }
       }
     } else {
-      const defaultShift = shifts[0];
-      if (defaultShift) {
-        const jamStr = (defaultShift.jam_masuk && defaultShift.jam_pulang) ? ' (' + defaultShift.jam_masuk + ' - ' + defaultShift.jam_pulang + ')' : (defaultShift.jam_masuk ? ' (' + defaultShift.jam_masuk + ')' : '');
-        shiftInfo = (defaultShift.nama_shift || defaultShift.id_shift) + jamStr;
-      }
+      // 100% Konsisten dengan Tab Roster & Tab Riwayat Kehadiran:
+      // Jika belum diplot oleh HOD di Tabel_Roster, status default hari ini adalah OFF (Libur)
+      isOffToday = true;
+      shiftInfo = 'OFF (Libur)';
     }
 
     // Deteksi ALPA masa lalu dalam periode cut-off berjalan
